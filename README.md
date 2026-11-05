@@ -9,14 +9,14 @@ This public beta extends [Zebby](https://github.com/desigrit/zebby-the-scout) wi
 ## Boards
 
 1. Open **Boards** and create a **Zebby Boards.sqlite** file, or open an existing one. Choose your OneDrive folder to share history across computers.
-2. Paste filtered company career-page links, one per line. You can rename each company.
+2. Paste company career-page links, one per line. In **Tracking instructions**, describe which openings to count. For example, “Look under the Product heading for product manager roles” or “Only track Senior or Principal Product Manager roles.” Leave it blank to track all openings.
 3. **Add and check** saves the first complete scan as a baseline. Existing listings start with a count of zero new listings.
 4. Use **Check for updates** or **Check all**. New listing counts accumulate until you choose **Mark as reviewed**.
 5. Open the saved website link to review the roles.
 
-Checks use the provider, model, and thinking level selected in Settings. AI identifies links to vacancies; code compares stable job IDs with saved history. A changed title, reordered page, or returning listing with the same ID does not count as new. Changing a board's filters starts a new baseline.
+Boards reads the full results list and uses the model selected in Settings to apply your instructions to each newly seen vacancy. It uses the title, section heading, and text visible in the listing row. Boards remembers each decision and counts new matches by job ID. Editing the link or instructions starts a fresh baseline on the next check.
 
-The reader includes pagination and coverage checks for Slack, Uber, and Meta, plus an AI navigation path for other public boards. Failed or incomplete checks keep the last successful date and count. Boards shows counts rather than individual jobs.
+The reader supports Figma's grouped openings, pagination and coverage checks for Slack, Uber, and Meta, and AI navigation for other public boards. Failed or incomplete checks keep the last successful date and count. Open the source link to review the roles.
 
 ## Your databases
 

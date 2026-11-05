@@ -10,6 +10,10 @@ import { writeProfileSettings } from "./settings-persistence";
 const APPLICATION_ID = 0x5a424259;
 type Row = Record<string, unknown>;
 type Recovery = { target: string; working: string; hash: string };
+function watchKey(url: string, instructions: string) {
+  const link = boardSearchKey(url);
+  return instructions ? JSON.stringify([link, instructions]) : link;
+}
 async function hash(file: string) { return createHash("sha256").update(await readFile(file)).digest("hex"); }
 function contents(file: string) {
   const db = new DatabaseSync(file, { readOnly: true });
@@ -23,15 +27,15 @@ function contents(file: string) {
 }
 function validate(db: DatabaseSync) {
   if (db.prepare("PRAGMA application_id").get()?.application_id !== APPLICATION_ID ||
-      db.prepare("PRAGMA user_version").get()?.user_version !== 1 ||
+      ![1, 2].includes(Number(db.prepare("PRAGMA user_version").get()?.user_version)) ||
       db.prepare("PRAGMA quick_check").get()?.quick_check !== "ok") {
     throw new Error("Choose a Zebby Boards database. Your Applications database is a separate file.");
   }
 }
 function schema(db: DatabaseSync) {
-  db.exec(`PRAGMA application_id = ${APPLICATION_ID}; PRAGMA user_version = 1;
+  db.exec(`PRAGMA application_id = ${APPLICATION_ID}; PRAGMA user_version = 2;
     CREATE TABLE boards (id TEXT PRIMARY KEY, company TEXT NOT NULL, url TEXT NOT NULL,
-      search_key TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL DEFAULT 1,
+      search_key TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL DEFAULT 1, instructions TEXT NOT NULL DEFAULT '',
       last_check_id INTEGER NOT NULL DEFAULT 0, reviewed_through INTEGER NOT NULL DEFAULT 0,
       last_checked_at TEXT NOT NULL DEFAULT '', last_attempt_at TEXT NOT NULL DEFAULT '',
       total_count INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
@@ -41,9 +45,19 @@ function schema(db: DatabaseSync) {
       provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '');
     CREATE TABLE board_jobs (board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
       revision INTEGER NOT NULL, identity TEXT NOT NULL, url TEXT NOT NULL,
-      first_check_id INTEGER NOT NULL, last_check_id INTEGER NOT NULL,
+      first_check_id INTEGER NOT NULL, last_check_id INTEGER NOT NULL, matches INTEGER NOT NULL DEFAULT 1,
       PRIMARY KEY(board_id, revision, identity));
     CREATE INDEX board_jobs_unreviewed ON board_jobs(board_id, revision, first_check_id);`);
+}
+
+function upgradeWorkingCopy(db: DatabaseSync) {
+  if (db.prepare("PRAGMA user_version").get()?.user_version !== 1) return;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`ALTER TABLE boards ADD COLUMN instructions TEXT NOT NULL DEFAULT '';
+      ALTER TABLE board_jobs ADD COLUMN matches INTEGER NOT NULL DEFAULT 1;
+      PRAGMA user_version = 2; COMMIT;`);
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
 export class BoardsStore {
@@ -139,6 +153,7 @@ export class BoardsStore {
     if (incoming !== working) { await copyFile(incoming, working); await unlink(incoming); }
     this.db = new DatabaseSync(working);
     this.db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = DELETE; PRAGMA busy_timeout = 3000;");
+    upgradeWorkingCopy(this.db);
     this.target = target; this.working = working; this.sourceHash = sourceHash; this.dirty = Boolean(recovered); this.epoch++;
   }
   async recoverOnStartup(): Promise<boolean> {
@@ -165,30 +180,36 @@ export class BoardsStore {
   list(): Board[] {
     if (!this.db) return [];
     return (this.db.prepare(`SELECT b.*, (SELECT COUNT(*) FROM board_jobs j WHERE j.board_id=b.id AND j.revision=b.revision
-      AND j.first_check_id>b.reviewed_through) AS new_count FROM boards b ORDER BY b.created_at,b.id`).all() as Row[]).map(row => ({
+      AND j.matches=1 AND j.first_check_id>b.reviewed_through) AS new_count FROM boards b ORDER BY b.created_at,b.id`).all() as Row[]).map(row => ({
       id: String(row.id), company: String(row.company), url: String(row.url), revision: Number(row.revision),
+      instructions: String(row.instructions),
       lastCheckedAt: String(row.last_checked_at), lastAttemptAt: String(row.last_attempt_at), lastCheckId: Number(row.last_check_id),
       newCount: Number(row.new_count), totalCount: Number(row.total_count), error: String(row.error), createdAt: String(row.created_at),
     }));
   }
   get(id: string) { const board = this.list().find(board => board.id === id); if (!board) throw new Error("This board is no longer available."); return board; }
+  knownMatches(id: string, revision: number) {
+    const rows = this.database().prepare("SELECT identity,matches FROM board_jobs WHERE board_id=? AND revision=?").all(id, revision);
+    return new Map(rows.map(row => [String(row.identity), Boolean(row.matches)]));
+  }
   async add(inputs: BoardInput[]) {
     if (!inputs.length || inputs.length > 100) throw new Error("Add between 1 and 100 board links.");
     const values = inputs.map(input => boardInputSchema.parse(input));
     return this.write(db => values.map(input => {
-      const key = boardSearchKey(input.url);
-      if (db.prepare("SELECT id FROM boards WHERE search_key=?").get(key)) throw new Error("This board link is already saved.");
+      const instructions = input.instructions ?? "", key = watchKey(input.url, instructions);
+      if (db.prepare("SELECT id FROM boards WHERE search_key=?").get(key)) throw new Error("This board link is already saved with the same tracking instructions.");
       const id = randomUUID();
-      db.prepare("INSERT INTO boards(id,company,url,search_key,created_at) VALUES (?,?,?,?,?)")
-        .run(id, input.company, input.url, key, new Date().toISOString()); return id;
+      db.prepare("INSERT INTO boards(id,company,url,search_key,instructions,created_at) VALUES (?,?,?,?,?,?)")
+        .run(id, input.company, input.url, key, instructions, new Date().toISOString()); return id;
     }));
   }
   async update(id: string, input: BoardInput) {
-    const value = boardInputSchema.parse(input), key = boardSearchKey(value.url);
+    const value = boardInputSchema.parse(input);
     return this.write(db => {
-      const board = this.get(id), changed = boardSearchKey(board.url) !== key;
-      if (db.prepare("SELECT id FROM boards WHERE search_key=? AND id<>?").get(key, id)) throw new Error("This board link is already saved.");
-      db.prepare("UPDATE boards SET company=?,url=?,search_key=? WHERE id=?").run(value.company, value.url, key, id);
+      const board = this.get(id), instructions = value.instructions ?? board.instructions;
+      const key = watchKey(value.url, instructions), changed = watchKey(board.url, board.instructions) !== key;
+      if (db.prepare("SELECT id FROM boards WHERE search_key=? AND id<>?").get(key, id)) throw new Error("This board link is already saved with the same tracking instructions.");
+      db.prepare("UPDATE boards SET company=?,url=?,search_key=?,instructions=? WHERE id=?").run(value.company, value.url, key, instructions, id);
       if (changed) db.prepare("UPDATE boards SET revision=revision+1,last_check_id=0,reviewed_through=0,last_checked_at='',last_attempt_at='',total_count=0,error='' WHERE id=?").run(id);
     });
   }
@@ -208,13 +229,14 @@ export class BoardsStore {
       if (this.epoch !== generation || board.revision !== revision) throw new Error("The board or database changed during this check. Check it again.");
       const now = new Date().toISOString();
       const jobs = [...new Map(scan.jobs.map(job => [job.key, job])).values()];
+      const total = jobs.filter(job => job.matches).length;
       const check = Number(db.prepare("INSERT INTO board_checks(board_id,revision,checked_at,status,pages,total,provider,model) VALUES (?,?,?,'complete',?,?,?,?)")
-        .run(id, revision, now, scan.pages, jobs.length, scan.provider, scan.model).lastInsertRowid);
-      const insert = db.prepare(`INSERT INTO board_jobs(board_id,revision,identity,url,first_check_id,last_check_id) VALUES(?,?,?,?,?,?)
+        .run(id, revision, now, scan.pages, total, scan.provider, scan.model).lastInsertRowid);
+      const insert = db.prepare(`INSERT INTO board_jobs(board_id,revision,identity,url,first_check_id,last_check_id,matches) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(board_id,revision,identity) DO UPDATE SET url=excluded.url,last_check_id=excluded.last_check_id`);
-      for (const job of jobs) insert.run(id, revision, job.key, job.url, check, check);
+      for (const job of jobs) insert.run(id, revision, job.key, job.url, check, check, Number(job.matches));
       db.prepare("UPDATE boards SET last_check_id=?,last_checked_at=?,last_attempt_at=?,total_count=?,error='',reviewed_through=CASE WHEN last_check_id=0 THEN ? ELSE reviewed_through END WHERE id=?")
-        .run(check, now, now, jobs.length, check, id);
+        .run(check, now, now, total, check, id);
     });
   }
   async failed(id: string, revision: number, generation: number, message: string) {

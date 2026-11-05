@@ -3,7 +3,7 @@ import { lookup } from "node:dns/promises";
 import { randomUUID } from "node:crypto";
 import { isPublicAddress } from "../lib/public-address";
 import { boardUrl } from "../lib/board-identity";
-import { captureBoardPage, type BoardPage } from "./board-page";
+import { captureBoardPage, isFigmaCareers, type BoardPage } from "./board-page";
 
 export type BoardReader = { open(url: string): Promise<void>; read(): Promise<BoardPage>; next(id: string): Promise<void>; close(): void };
 const pause = (milliseconds: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -65,7 +65,8 @@ export class BoardBrowser implements BoardReader {
   private async snapshot(): Promise<BoardPage> {
     this.signal.throwIfAborted();
     if (this.navigationError) throw new Error(this.navigationError);
-    const result: BoardPage = await this.window.webContents.executeJavaScript(`(${captureBoardPage.toString()})()`);
+    const section = isFigmaCareers(boardUrl(this.source)) ? "job-openings" : "";
+    const result: BoardPage = await this.window.webContents.executeJavaScript(`(${captureBoardPage.toString()})(${JSON.stringify(section)})`);
     const original = boardUrl(this.source), current = boardUrl(result.url);
     if (current.origin !== original.origin || current.pathname.replace(/\/$/, "") !== original.pathname.replace(/\/$/, "") ||
         original.hash && current.hash !== original.hash || [...original.searchParams.keys()].some(key =>

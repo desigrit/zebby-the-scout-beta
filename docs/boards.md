@@ -11,7 +11,8 @@ flowchart LR
   C --> D[Selected AI provider]
   D --> E[Validate returned candidate IDs]
   E --> F[Stable job IDs and complete-scan checks]
-  F --> G[Separate Boards SQLite history]
+  F --> I[Apply tracking instructions to unseen roles]
+  I --> G[Separate Boards SQLite history]
   G --> H[Unread count and last successful check]
 ```
 
@@ -23,6 +24,8 @@ The reader scrolls to collect lazy-loaded links, waits for stable results, and f
 
 `lib/board-identity.ts` uses requisition IDs for known hosts and a conservative URL identity elsewhere. It removes only known tracking parameters from generic job identities. Saved board keys retain query and fragment filters. AI does not calculate the difference between scans.
 
+Each board can store freeform tracking instructions. The reader captures each vacancy's title, section heading when available, and listing text. On Figma it reads the Job Openings section and recognizes the company's Greenhouse vacancy URLs. After the full inventory passes coverage checks, a direct instruction such as “Look under the Product heading for product manager roles” narrows the candidates to that observed section. The selected model then evaluates the role criteria. It receives the full instructions and every eligible unseen role. Its response must include a yes or no decision for each supplied ID. A complete scan with zero matches is valid. Blank instructions include every verified job.
+
 Dynamic boards can still change while being read. A changed visible total or page sequence fails the check; pages without a reliable total cannot provide the same independent completeness check. Login-only boards, challenges, and changed filter redirects require a usable public results link.
 
 ## Persistence and review semantics
@@ -31,11 +34,11 @@ Dynamic boards can still change while being read. A changed visible total or pag
 
 | Table | Purpose |
 | --- | --- |
-| `boards` | Company, exact link, normalized search key, revision, successful check, review watermark, latest error |
+| `boards` | Company, exact link, tracking instructions, search key, revision, successful check, review watermark, latest error |
 | `board_checks` | Successful and failed checks with provider, model, page count and timestamp |
-| `board_jobs` | Ever-seen identity, first check and last check, scoped to board revision |
+| `board_jobs` | Ever-seen identity, matching decision, first and last checks, scoped to board revision |
 
-The first complete check acknowledges all current identities. Subsequent checks add unseen identities. Pending discoveries accumulate even if a listing later disappears. **Mark as reviewed** advances only through the check displayed when clicked, preserving any newer discoveries. A returning ID is not new. A company rename preserves history; a changed search link creates a new revision and baseline.
+The first complete check establishes a baseline. Later checks count only matching new identities and reuse previous decisions for returning IDs. Pending discoveries accumulate even if a listing later disappears. **Mark as reviewed** advances through the check displayed when clicked. A company rename preserves history. Changing the link or instructions starts a new revision and baseline. The same link can have multiple sets of instructions. Boards schema version 2 reads version 1 files with blank instructions and treats their existing jobs as matches. The upgrade reaches the selected file through the normal save process.
 
 The beta copies the selected database into its local profile, checks for external changes before writing, and uses SQLite backup to update the selected file while preserving its file identity. The beta writes a recovery marker before local commit. Restart preserves pending changes. Simultaneous edits from multiple computers require an explicit recovery copy.
 

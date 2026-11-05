@@ -9,6 +9,8 @@ import electron from "electron";
 // measures loading and pagination independently from model quality.
 const root = path.resolve("qa-output/boards-reader");
 const model = process.env.ZEBBY_QA_BOARD_MODEL || "";
+const instructions = process.env.ZEBBY_QA_BOARD_INSTRUCTIONS || "";
+if (instructions && !model) throw new Error("Choose a local model to check tracking instructions.");
 await mkdir(path.join(root, "profile"), { recursive: true });
 const urls = process.argv.slice(2).length ? process.argv.slice(2) : [
   "https://slack.com/careers/dept/product",
@@ -22,7 +24,7 @@ await build({ stdin: { resolveDir: process.cwd(), contents: `
   import { BoardBrowser } from './desktop/board-browser';
   import { scanBoard } from './desktop/boards-scan';
   import { analyzeWithOllama } from './desktop/ollama';
-  import { boardExtractionInstructions, boardExtractionSchema } from './shared/boards';
+  import { boardModelContract } from './shared/boards';
   app.setPath('userData', ${JSON.stringify(path.join(root, "profile"))});
   app.on('window-all-closed', () => {});
   app.whenReady().then(async () => {
@@ -36,12 +38,14 @@ await build({ stdin: { resolveDir: process.cwd(), contents: `
     };
     try {
       const model = ${JSON.stringify(model)};
-      const scan = await scanBoard({ url, reader, signal: controller.signal, provider: model ? 'ollama' : 'coverage-test', model: model || 'observed-ids', batchSize: model ? 12 : 40,
+      const scan = await scanBoard({ url, reader, instructions: ${JSON.stringify(instructions)}, signal: controller.signal, provider: model ? 'ollama' : 'coverage-test', model: model || 'observed-ids', batchSize: model ? 12 : 40,
         extract: async input => model ? analyzeWithOllama({ baseUrl: 'http://localhost:11434', model,
-          instructions: boardExtractionInstructions, content: JSON.stringify(input), schema: boardExtractionSchema, thinkingLevel: 'off', signal: controller.signal })
+          ...boardModelContract(input), content: JSON.stringify(input), thinkingLevel: 'off', signal: controller.signal })
           : ({ listingIds: input.candidates.map(candidate => candidate.id), nextControlId: '' }),
         progress: (message, phase) => { if (phase === 'reading') console.log(new URL(url).hostname + ': ' + message); } });
-      console.log(JSON.stringify({ host: new URL(url).hostname, pages: scan.pages, jobs: scan.jobs.length, model: model || 'coverage-test', status: 'complete' }));
+      const matches = scan.jobs.filter(job => job.matches);
+      await writeFile(${JSON.stringify(root)} + '/matches-' + index + '.json', JSON.stringify(matches, null, 2));
+      console.log(JSON.stringify({ host: new URL(url).hostname, pages: scan.pages, jobs: scan.jobs.length, matches: matches.length, model: model || 'coverage-test', status: 'complete' }));
     } catch (error) { failed = true; console.error(new URL(url).hostname + ': ' + error.message); }
     finally { reader.close(); }
   }

@@ -40,7 +40,7 @@ import { materializeTailoredResume } from "./resume-files";
 import { BoardsStore } from "./boards-store";
 import { BoardsService } from "./boards-service";
 import { BoardBrowser } from "./board-browser";
-import { boardExtractionInstructions, boardExtractionSchema, type BoardInput } from "../shared/boards";
+import { boardModelContract, type BoardInput } from "../shared/boards";
 import { CREDIT_SERVICE_URL } from "../shared/credit-service";
 import { distributionChannel as resolveDistributionChannel, readStorePackageFamily,
   requireDurableDatabase, storeDataPaths, STORE_UPDATES_URI } from "./distribution";
@@ -1015,7 +1015,8 @@ else {
           const value = await creditsClient.analyze(quote.id, input, signal, source, quote.model);
           return { value, acknowledge: () => creditsClient.acknowledge(quote.id) };
         }
-        const value = await analyzeWithSelectedProvider(boardExtractionInstructions, input, "board_extract", boardExtractionSchema,
+        const contract = boardModelContract(input);
+        const value = await analyzeWithSelectedProvider(contract.instructions, input, contract.name, contract.schema,
           "The board links could not be read.", selected, signal);
         return { value };
       },

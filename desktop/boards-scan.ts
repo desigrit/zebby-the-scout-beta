@@ -1,11 +1,28 @@
 import { boardJobIdentity } from "../lib/board-identity";
 import { validatedBoardExtraction, type BoardCandidate, type BoardExtractionInput, type BoardScan } from "../shared/boards";
-import { knownListing, knownNext, type BoardPage } from "./board-page";
+import { isFigmaCareers, knownListing, knownNext, type BoardPage } from "./board-page";
 import type { BoardReader } from "./board-browser";
 
 export type BoardExtractor = (input: BoardExtractionInput, signal: AbortSignal) => Promise<unknown>;
+
+// Only narrow an unambiguous instruction to a heading the reader actually saw.
+// Compound or open-ended instructions go to the model with the full inventory.
+function normalizeHeading(text: string) { return text.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase(); }
+function requestedHeading(criteria: string, candidates: Iterable<BoardCandidate>) {
+  const words = normalizeHeading(criteria);
+  if (/\b(?:also|or|elsewhere|outside|otherwise|except|regardless|instead)\b/.test(words)) return "";
+  const command = /^(?:when [^,.;!?]+,\s*)?(?:please )?(?:only )?(?:look|search|track|check|find|monitor|watch)(?: only)?(?: (?:jobs|roles|openings)(?: (?:listed|grouped|shown))?)? (?:under|within|in) (?:the )?(.+?) (?:heading|section|department)(?: for [^.;!?]+)?[.!]?$/;
+  const named = command.exec(words)?.[1]?.replace(/^["'“‘]|["'”’]$/g, "");
+  if (!named) return "";
+  for (const candidate of candidates) {
+    if (candidate.department && normalizeHeading(candidate.department) === named) return named;
+  }
+  return "";
+}
+
 export async function scanBoard(options: { url: string; reader: BoardReader; extract: BoardExtractor; signal: AbortSignal;
-  provider: string; model: string; batchSize?: number; progress(message: string, phase: "reading" | "extracting"): void }): Promise<BoardScan> {
+  provider: string; model: string; instructions?: string; knownMatches?: ReadonlyMap<string, boolean>;
+  batchSize?: number; progress(message: string, phase: "reading" | "extracting"): void }): Promise<BoardScan> {
   const { reader, signal } = options;
   const candidates = new Map<string, BoardCandidate>(), expected = new Set<string>(), pageSignatures = new Set<string>();
   let expectedTotal: number | null = null, page: BoardPage | null = null, pages = 0, explicitlyEmpty = false;
@@ -13,7 +30,11 @@ export async function scanBoard(options: { url: string; reader: BoardReader; ext
     let last: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
       signal.throwIfAborted();
-      try { return validatedBoardExtraction(await options.extract(input, signal), input); }
+      try {
+        const result = validatedBoardExtraction(await options.extract(input, signal), input);
+        if ("decisions" in result) return { listingIds: Object.keys(result.decisions).filter(id => result.decisions[id]), nextControlId: "" };
+        return result;
+      }
       catch (error) { signal.throwIfAborted(); last = error; }
     }
     throw last;
@@ -59,21 +80,50 @@ export async function scanBoard(options: { url: string; reader: BoardReader; ext
     // observed links. Other sites retain their complete candidate inventory.
     const links = [...candidates.values()].filter(candidate => knownListing(candidate.url, options.url) !== false)
       .map((candidate, index) => ({ ...candidate, id: `l${index}` }));
-    const size = Math.max(1, Math.min(options.batchSize || 40, 60)), jobs = new Map<string, ReturnType<typeof boardJobIdentity>>();
-    for (let index = 0; index < links.length; index += size) {
-      signal.throwIfAborted(); options.progress(`Identifying listings ${Math.min(index + size, links.length)} of ${links.length}`, "extracting");
-      const batch = links.slice(index, index + size);
+    const size = Math.max(1, Math.min(options.batchSize || 40, 60));
+    const jobs = new Map<string, BoardCandidate>(), toIdentify: BoardCandidate[] = [];
+    const figma = isFigmaCareers(new URL(options.url));
+    for (const link of links) {
+      if (figma && knownListing(link.url, options.url)) jobs.set(boardJobIdentity(link.url).key, link);
+      else toIdentify.push(link);
+    }
+    for (let index = 0; index < toIdentify.length; index += size) {
+      signal.throwIfAborted(); options.progress(`Identifying listings ${Math.min(index + size, toIdentify.length)} of ${toIdentify.length}`, "extracting");
+      const batch = toIdentify.slice(index, index + size);
       const response = await extract({ task: "listings", pageUrl: options.url, pageTitle: page.title,
         summary: "Identify specific vacancy links. The saved board filters have already been applied.", candidates: batch, controls: [],
         expectedListingCount: knownListing(options.url, options.url) === null ? null : batch.length });
-      for (const id of response.listingIds) { const job = boardJobIdentity(batch.find(candidate => candidate.id === id)!.url); jobs.set(job.key, job); }
+      const accepted = new Set(response.listingIds);
+      for (const candidate of batch) if (accepted.has(candidate.id)) jobs.set(boardJobIdentity(candidate.url).key, candidate);
     }
-    if (knownListing(options.url, options.url) !== null && (jobs.size !== expected.size || [...expected].some(id => !jobs.has(id)))) {
+    if ([...expected].some(id => !jobs.has(id))) {
       throw new Error("The selected model did not identify every job link. Try the check again or choose another model in Settings.");
     }
     if (expectedTotal !== null && jobs.size !== expectedTotal) throw new Error(`Only ${jobs.size} of ${expectedTotal} listings could be verified. Try the check again.`);
     if (!jobs.size && !explicitlyEmpty) throw new Error("No job links could be verified. The board did not confirm that it has no openings.");
+    const criteria = options.instructions?.trim();
+    const decisions = new Map(options.knownMatches);
+    if (criteria) {
+      const heading = requestedHeading(criteria, jobs.values());
+      if (heading) {
+        for (const [key, job] of jobs) {
+          if (!decisions.has(key) && normalizeHeading(job.department || "") !== heading) {
+            decisions.set(key, false);
+          }
+        }
+      }
+      const unseen = [...jobs].filter(([key]) => !decisions.has(key));
+      for (let index = 0; index < unseen.length; index += size) {
+        signal.throwIfAborted();
+        options.progress(`Checking tracking instructions for ${Math.min(index + size, unseen.length)} of ${unseen.length} roles`, "extracting");
+        const batch = unseen.slice(index, index + size);
+        const response = await extract({ task: "roles", criteria, candidates: batch.map(([, candidate]) => candidate) });
+        const accepted = new Set(response.listingIds);
+        for (const [key, candidate] of batch) decisions.set(key, accepted.has(candidate.id));
+      }
+    }
     signal.throwIfAborted();
-    return { jobs: [...jobs.values()], pages, provider: options.provider, model: options.model };
+    return { jobs: [...jobs].map(([key, candidate]) => ({ key, url: candidate.url, matches: criteria ? decisions.get(key) === true : true })),
+      pages, provider: options.provider, model: options.model };
   } finally { reader.close(); }
 }

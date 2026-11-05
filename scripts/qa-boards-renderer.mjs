@@ -38,6 +38,10 @@ export async function checkBoardsRenderer(page, nav) {
   await page.getByRole("button", { name: "Add your first boards" }).click();
   const links = page.getByRole("textbox", { name: "Board links", exact: true });
   await links.fill("https://slack.com/careers/dept/product\nhttps://jobs.uber.com/en/jobs/?team=Product&countries=United+States\nhttps://www.metacareers.com/jobsearch/?q=Product%20Manager");
+  const instructions = page.getByRole("textbox", { name: "Tracking instructions (optional)" });
+  const seniorRoles = "Look for Senior or Principal Product Manager roles only.";
+  await instructions.fill(seniorRoles);
+  await page.getByText("These instructions apply to each link above.", { exact: false }).waitFor();
   await capture("boards-add");
   const pasted = await links.inputValue();
   page.once("dialog", dialog => dialog.dismiss()); await page.getByRole("button", { name: "Add boards", exact: true }).click();
@@ -48,18 +52,25 @@ export async function checkBoardsRenderer(page, nav) {
   assert.equal(await links.isVisible(), true, "Cancelling navigation preserves the board draft");
   await page.evaluate(() => { window.boardsQA.failedAdd = true; }); await page.getByRole("button", { name: "Add and check" }).click();
   await page.getByRole("alert").filter({ hasText: "already saved" }).waitFor(); assert.ok((await links.inputValue()).includes("slack.com"));
+  assert.equal(await instructions.inputValue(), seniorRoles);
   await page.evaluate(() => { window.boardsQA.failedAdd = false; }); await page.getByRole("button", { name: "Add and check" }).click();
   await page.locator(".board-row").nth(2).waitFor(); assert.equal(await page.locator(".board-row").count(), 3);
+  assert.equal(await page.locator(".board-row").getByText(seniorRoles, { exact: true }).count(), 3);
   await page.evaluate(() => window.boardsQA.set({ boards: window.boardsQA.get().boards.map((board, index) => ({ ...board,
     lastCheckedAt: "2026-11-04T16:30:00Z", lastCheckId: 10 + index, totalCount: 20, newCount: index === 0 ? 4 : 0,
     error: index === 2 ? "The board's results did not finish loading. The last successful check is unchanged." : "" })) }));
   const first = page.getByRole("article", { name: "Slack", exact: true }); await first.getByText("4 new listings found").waitFor();
   await first.getByRole("button", { name: "Edit Slack board" }).click();
+  assert.equal(await instructions.inputValue(), seniorRoles);
+  await instructions.fill("Look under the Product heading for product manager roles.");
+  await page.getByText("Changing the link or instructions starts a new baseline on the next check.").waitFor();
   const company = page.getByRole("textbox", { name: "Company name (optional)" });
   await company.fill("Slack Product"); page.once("dialog", dialog => dialog.dismiss());
   await page.getByRole("button", { name: "Edit Uber board" }).click();
   assert.equal(await company.inputValue(), "Slack Product", "Editing another row cannot silently replace a draft");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await first.getByText(seniorRoles, { exact: true }).waitFor();
+  await first.getByText("20 matching roles at last check").waitFor();
   await capture("boards-desktop-light"); await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
   await capture("boards-desktop-dark"); await page.setViewportSize({ width: 790, height: 620 }); await capture("boards-compact-dark");
   await page.evaluate(() => { document.documentElement.dataset.theme = "light"; }); await capture("boards-compact-light");

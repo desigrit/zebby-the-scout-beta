@@ -613,6 +613,16 @@ test("PostgreSQL ledger and service integration", async (t) => {
         const charged = (await wallet()).used, invoked = providerCalls;
         await call("POST", "/v1/analysis", request);
         assert.equal((await wallet()).used, charged); assert.equal(providerCalls, invoked);
+        const roleInput = { task: "roles", criteria: "Senior or Principal Product Manager roles only.",
+          candidates: [{ ...boardInput.candidates[0], title: "Product Manager", department: "Product" }] };
+        const roleQuote = async () => (await call("POST", "/v1/quotes", { ...payload, input: roleInput })).id;
+        providerResult = { decisions: {} };
+        await assert.rejects(call("POST", "/v1/analysis", { quoteId: await roleQuote(), requestId: randomUUID(), input: roleInput }), /required format/);
+        assert.equal((await wallet()).used, charged);
+        providerResult = { decisions: { l0: false } };
+        const classified = await call("POST", "/v1/analysis", { quoteId: await roleQuote(), requestId: randomUUID(), input: roleInput });
+        assert.deepEqual(classified.result, providerResult);
+        assert.deepEqual(lastProviderRequest.text.format.schema.properties.decisions.required, ["l0"]);
       } finally { expectedModel = "gpt-6.1-sol"; providerResult = plan; }
     });
     await t.test("refunds are cumulative and idempotent, and disputes freeze spending", async () => {

@@ -22,6 +22,9 @@
 .boards-editor textarea { min-height: 80px; resize: vertical; }
 .boards-editor textarea::placeholder, .boards-editor input::placeholder { color: var(--ink-soft); opacity: 1; }
 .boards-company-field { max-width: 350px; }
+.board-field-help { margin: -9px 0 0; color: var(--ink-soft); font-size: 12px; }
+.board-instructions, .board-match-total { color: var(--ink-soft); font-size: 12px; overflow-wrap: anywhere; }
+.board-instructions { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .boards-editor-actions { display: flex; gap: 8px; }
 .boards-columns, .board-row { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(115px, .65fr) minmax(145px, .8fr) 230px; gap: 18px; align-items: center; }
 .boards-columns { padding: 0 0 10px; color: var(--ink-soft); font-size: 11px; border-bottom: 1px solid var(--line-strong); }
