@@ -20,6 +20,9 @@ async function inspectRequests() {
       probes.push(url.href);
     }
   }
+  for (const offset of [10, 20]) {
+    const batch = new URL("/api/apply/v2/jobs", site); batch.search = site.search; batch.searchParams.set("start", String(offset)); batch.searchParams.set("num", "10"); probes.push(batch.href);
+  }
   await Promise.all(probes.map(async url => {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
@@ -73,7 +76,7 @@ app.whenReady().then(async () => {
   try {
     const result=await scanBoard({url:process.env.NETFLIX_BOARD,reader,signal:controller.signal,provider:"coverage-test",model:"observed-ids",
       progress:message=>console.log("SCAN",message),extract:async input=>{
-        if(input.task==="navigation"){const next=input.controls.find(c=>!c.disabled && /next page|load more (?:jobs|results)|show more (?:jobs|results)/i.test(c.text));
+        if(input.task==="navigation"){const next=input.controls.find(c=>!c.disabled && /next page|(?:load|show) more (?:jobs|results|positions)/i.test(c.text));
           console.log("PAGINATION",++nav,next?.text,JSON.stringify(input.controls.map(c=>c.text.slice(0,90)).slice(-12)));return {listingIds:[],nextControlId:next?.id || ""};}
         return {listingIds:input.candidates.filter(c=>/\/careers\/job\/\d+|[?&]pid=\d+/.test(c.url)).map(c=>c.id), nextControlId:""};
       }});
