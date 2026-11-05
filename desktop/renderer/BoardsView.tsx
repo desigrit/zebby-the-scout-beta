@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, FolderOpen, LoaderCircle, Pencil, Plus, RefreshCw, X } from "lucide-react";
 import type { Board, BoardsState } from "../../shared/boards";
-import type { DesktopState } from "../bridge";
 import SettingsAction from "./SettingsAction";
 
 const initial: BoardsState = { filePath: "", filename: "", dirty: false, error: "", boards: [], progress: [] };
@@ -58,7 +57,7 @@ function companyFromUrl(value: string) {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-export default function BoardsView({ desktop, openSettings, onDirtyChange }: { desktop: DesktopState; openSettings: () => void; onDirtyChange: (dirty: boolean) => void }) {
+export default function BoardsView({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const controls = useBoards(), { state, error, working, act } = controls;
   const [adding, setAdding] = useState(false), [editing, setEditing] = useState<Board | null>(null);
   const [links, setLinks] = useState(""), [company, setCompany] = useState("");
@@ -67,9 +66,6 @@ export default function BoardsView({ desktop, openSettings, onDirtyChange }: { d
   const dirty = editing ? links !== editing.url || company !== editing.company || instructions !== (editing.instructions || "")
     : adding && Boolean(links || company || instructions);
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
-  const model = desktop.analysisProvider === "openai" ? desktop.openaiModel : desktop.analysisProvider === "anthropic" ? desktop.anthropicModel
-    : desktop.analysisProvider === "credits" ? desktop.credits.model : desktop.analysisProvider === "builtin" ? desktop.builtInModelId : desktop.ollamaModel;
-  const method = { openai: "OpenAI", anthropic: "Anthropic", credits: "Zebby credits", builtin: "Downloaded model", ollama: "Local server" }[desktop.analysisProvider];
   function reset() { setAdding(false); setEditing(null); setLinks(""); setCompany(""); setInstructions(""); }
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -98,8 +94,6 @@ export default function BoardsView({ desktop, openSettings, onDirtyChange }: { d
           onClick={beginAdd}><Plus size={17} aria-hidden="true" />Add boards</button>
       </div>}
     </div>
-    <div className="boards-method"><span>{method}{model ? ` · ${model}` : " · Choose a model"}</span>
-      <button type="button" className="boards-text-action" onClick={openSettings}>Settings</button></div>
     {(error || state.error) && <p className="boards-error" role="alert">{error || state.error}</p>}
     {state.dirty && <div className="boards-save-pending" role="status"><span>Boards changes are waiting to reach your database file.</span>
       <button type="button" className="boards-text-action" disabled={working} onClick={() => void act(() => window.desktop!.retryBoardsSave())}>Retry save</button>

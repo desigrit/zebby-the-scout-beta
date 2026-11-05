@@ -1,6 +1,6 @@
 {
   "name": "zebby-the-scout-beta",
-  "version": "2.6.3-beta.4",
+  "version": "2.6.3-beta.5",
   "private": true,
   "main": "desktop-dist/main.cjs",
   "engines": {
