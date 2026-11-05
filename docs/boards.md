@@ -18,7 +18,7 @@ flowchart LR
 
 `desktop/board-browser.ts` reads rendered pages in a hidden, sandboxed Electron window. The window has no app preload, saved login session, file access bridge, downloads, popups, or granted permissions. Network requests must use public HTTPS hosts. Navigation must retain the saved path and filters. Subframe redirects do not change the top-level board selection.
 
-The reader scrolls to collect lazy-loaded links, waits for stable results, and follows every observed results page. Slack, Uber, and Meta have narrow listing and pagination checks. Other pages use AI to identify next-page or load-more controls. Caps are 100 pages and 10,000 candidate links per check; reaching a cap fails the scan.
+The reader scrolls to collect lazy-loaded links, waits for stable results, and follows every observed results page. Slack, Uber, and Meta have narrow listing and pagination checks. Netflix uses the public search records behind Show More Positions. Each batch must confirm the saved filters and the final number of distinct position IDs must match Netflix’s filtered total before any tracking instructions are applied. Other pages use AI to identify next-page or load-more controls. Caps are 100 pages and 10,000 candidate links per check; reaching a cap fails the scan.
 
 `desktop/boards-scan.ts` gives the selected model batches of observed URLs and nearby text. It does not open every job description. The model returns IDs from those batches, not new URLs. Validation rejects missing expected links, invented IDs, duplicates, unavailable controls, repeated or skipped pages, inconsistent totals, and unverified empty pages. An invalid extraction retries once. A failed check never commits a partial baseline.
 

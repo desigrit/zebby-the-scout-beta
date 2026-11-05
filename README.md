@@ -16,7 +16,7 @@ This public beta extends [Zebby](https://github.com/desigrit/zebby-the-scout) wi
 
 Boards reads the full results list and uses the model selected in Settings to apply your instructions to each newly seen vacancy. It uses the title, section heading, and text visible in the listing row. Boards remembers each decision and counts new matches by job ID. Editing the link or instructions starts a fresh baseline on the next check.
 
-The reader supports Figma's grouped openings, pagination and coverage checks for Slack, Uber, and Meta, and AI navigation for other public boards. Failed or incomplete checks keep the last successful date and count. Open the source link to review the roles.
+The reader supports Figma's grouped openings, filtered Netflix search results, pagination and coverage checks for Slack, Uber, and Meta, and AI navigation for other public boards. Failed or incomplete checks keep the last successful date and count. Open the source link to review the roles.
 
 ## Your databases
 

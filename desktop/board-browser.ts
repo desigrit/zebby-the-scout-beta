@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { isPublicAddress } from "../lib/public-address";
 import { boardUrl } from "../lib/board-identity";
 import { captureBoardPage, isFigmaCareers, type BoardPage } from "./board-page";
+import { isNetflixSearch, NetflixBoardPages } from "./netflix-board";
 
 export type BoardReader = { open(url: string): Promise<void>; read(): Promise<BoardPage>; next(id: string): Promise<void>; close(): void };
 const pause = (milliseconds: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -19,6 +20,7 @@ export class BoardBrowser implements BoardReader {
   private previous = "";
   private navigationError = "";
   private lastPage: BoardPage | null = null;
+  private netflix: NetflixBoardPages | null = null;
   private abort: () => void;
   constructor(private signal: AbortSignal) {
     const isolated = session.fromPartition(`boards-${randomUUID()}`, { cache: false });
@@ -59,7 +61,14 @@ export class BoardBrowser implements BoardReader {
     this.abort = () => this.close(); signal.addEventListener("abort", this.abort, { once: true });
   }
   async open(url: string) {
-    this.signal.throwIfAborted(); this.source = boardUrl(url).href;
+    this.signal.throwIfAborted();
+    const target = boardUrl(url); this.source = target.href;
+    this.netflix = null; this.lastPage = null; this.previous = ""; this.navigationError = "";
+    if (isNetflixSearch(target)) {
+      const isolated = this.window.webContents.session;
+      this.netflix = new NetflixBoardPages(target, (input, init) => isolated.fetch(input, init), this.signal);
+      return;
+    }
     await Promise.race([this.window.loadURL(this.source), pause(30000, this.signal).then(() => { throw new Error("The board took too long to load. Try again."); })]);
   }
   private async snapshot(): Promise<BoardPage> {
@@ -78,6 +87,7 @@ export class BoardBrowser implements BoardReader {
     return result;
   }
   async read() {
+    if (this.netflix) return this.netflix.read();
     const started = Date.now();
     let previous = "", stable = 0, result: BoardPage;
     while (true) {
@@ -86,7 +96,7 @@ export class BoardBrowser implements BoardReader {
       const loaded = !result.loading && (result.candidates.length > 0 || result.empty) && signature !== this.previous;
       stable = loaded && signature === previous ? stable + 1 : 0;
       if (stable >= 2) break;
-      if (Date.now() - started > 30000) throw new Error("The board's results did not finish loading. The last successful check is unchanged.");
+      if (Date.now() - started > 30000) throw new Error("The board's results did not finish loading. Try checking this board again.");
       previous = signature; await pause(500, this.signal);
     }
     const collected = new Map(result.candidates.map(candidate => [candidate.url, candidate]));
@@ -108,6 +118,7 @@ export class BoardBrowser implements BoardReader {
     throw new Error("This board kept loading more results. Use a more specific filtered link.");
   }
   async next(id: string) {
+    if (this.netflix) { this.netflix.next(id); return; }
     if (!/^c\d+$/.test(id)) throw new Error("Invalid pagination control.");
     const before = await this.snapshot();
     const expected = this.lastPage?.controls.find(control => control.id === id);
