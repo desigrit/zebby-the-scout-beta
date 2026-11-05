@@ -803,7 +803,7 @@ export default function App() {
       {state.startupError && tab === "settings" && <div className="workspace-warning" role="alert">
         <span>The previous database could not be opened. Choose a database to continue.</span>
       </div>}
-      {tab === "boards" ? <BoardsView desktop={state} openSettings={openAnalysisSettings} onDirtyChange={setDirtyBoard} /> : !state.filePath ? (tab === "settings" ? <SettingsView state={state} onState={setState} onUpdate={() => void applyUpdate()} onCheckUpdates={checkUpdates} updateWorking={updateWorking} /> : <Welcome state={state} onState={setState} />)
+      {tab === "boards" ? <BoardsView onDirtyChange={setDirtyBoard} /> : !state.filePath ? (tab === "settings" ? <SettingsView state={state} onState={setState} onUpdate={() => void applyUpdate()} onCheckUpdates={checkUpdates} updateWorking={updateWorking} /> : <Welcome state={state} onState={setState} />)
       : tab === "plan" ? <PlanView key={databaseVersion}
         analysisProvider={state.analysisProvider} ollamaModel={state.ollamaModel}
         builtInModelId={state.builtInModelId} builtInReady={Boolean(state.localModels?.some((model) =>

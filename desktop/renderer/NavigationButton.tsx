@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import lottie, { type AnimationItem } from "lottie-web/build/player/lottie_light";
-import { BriefcaseBusiness, PanelsTopLeft, Settings2 } from "lucide-react";
-import { navigationAnimations, type NavigationKind } from "./navigation-animations";
+import { BriefcaseBusiness, Settings2 } from "lucide-react";
+import { boardIconRows, navigationAnimations, type NavigationKind } from "./navigation-animations";
 
 function SmartSearchIcon({ className, size }: { className?: string; size: number }) {
   return <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -10,7 +10,16 @@ function SmartSearchIcon({ className, size }: { className?: string; size: number
     <path strokeWidth={1.5} d="m18.5 1.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8Z M21.5 9.6v2.8 M20.1 11h2.8" />
   </svg>;
 }
-const icons = { plan: SmartSearchIcon, applications: BriefcaseBusiness, boards: PanelsTopLeft, settings: Settings2 };
+
+function BoardsIcon({ className, size }: { className?: string; size: number }) {
+  return <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x={3} y={3} width={18} height={18} rx={2} /><path d="M3 8h18" />
+    {boardIconRows.map(({ y, endX }) => <path key={y} strokeWidth={1.8} d={`M7 ${y}h.01 M10.5 ${y}H${endX}`} />)}
+  </svg>;
+}
+
+const icons = { plan: SmartSearchIcon, applications: BriefcaseBusiness, boards: BoardsIcon, settings: Settings2 };
 export default function NavigationButton({ kind, label, selected, collapsed, onActivate, disabled = false }: {
   kind: NavigationKind; label: string; selected: boolean; collapsed: boolean; onActivate: () => boolean;
   disabled?: boolean;

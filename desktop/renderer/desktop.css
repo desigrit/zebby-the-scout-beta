@@ -2,10 +2,9 @@
 .nav-private-tag { display: inline-block; margin-left: 7px; padding: 2px 5px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--ink-soft); font-size: 10px; font-weight: 500; line-height: 1.2; vertical-align: middle; }
 .boards-page { min-height: 100%; }
 .boards-toolbar, .boards-title, .boards-toolbar-actions { display: flex; align-items: center; gap: 12px; }
-.boards-toolbar { justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px; }
+.boards-toolbar { justify-content: space-between; flex-wrap: wrap; margin-bottom: 24px; }
 .boards-title h1 { margin: 0; font-size: 25px; font-weight: 650; letter-spacing: -.025em; }
 .boards-private { padding: 3px 7px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--ink-soft); font-size: 11px; }
-.boards-method { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 28px; color: var(--ink-soft); font-size: 12px; overflow-wrap: anywhere; }
 .boards-text-action { display: inline-flex; gap: 5px; align-items: center; padding: 3px 0; border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 600; text-align: left; }
 .boards-text-action:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
 .boards-error, .board-check-error { color: var(--accent); font-size: 13px; overflow-wrap: anywhere; }
@@ -56,7 +55,7 @@
   .board-actions { grid-column: 2; grid-row: 2; }
 }
 @media (max-width: 850px) {
-  .boards-method { margin-bottom: 18px; }
+  .boards-toolbar { margin-bottom: 18px; }
   .board-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .board-identity, .board-date, .board-result, .board-actions { grid-column: 1; grid-row: auto; justify-items: start; justify-content: start; }
   .boards-toolbar-actions { flex-wrap: wrap; }

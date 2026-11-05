@@ -1,4 +1,4 @@
-// Smart search plus Lucide's briefcase and sliders, authored as offline Lottie shapes.
+// Sidebar icons authored as offline Lottie shapes.
 export type NavigationKind = "plan" | "applications" | "boards" | "settings";
 type Point = [number, number];
 const fixed = (k: unknown) => ({ a: 0, k });
@@ -39,9 +39,21 @@ function sparkle(name: string, shapes: unknown[], center: Point, start: number) 
       { t: start + 5, value: [100] }, { t: 24, value: [100] }]) }, 1.5);
 }
 const sliderMotion = (x: number) => animated([{ t: 0, value: [0, 0] }, { t: 9, value: [x, 0] }, { t: 24, value: [0, 0] }]);
+export const boardIconRows = [
+  { y: 12, endX: 17, startFrame: 2 },
+  { y: 17, endX: 15.5, startFrame: 7 },
+] as const;
+
 export const navigationAnimations: Record<NavigationKind, ReturnType<typeof composition>> = {
-  boards: composition("Boards", [group("Panels", [shape("Frame", rounded(3, 3, 18, 18, 2)),
-    line("Header", [3, 8], [21, 8]), line("Column", [9, 8], [9, 21])])]),
+  boards: composition("Boards", [
+    group("Board", [shape("Frame", rounded(3, 3, 18, 18, 2)), line("Header", [3, 8], [21, 8])]),
+    ...boardIconRows.map(({ y, endX, startFrame }, index) => group(`List row ${index + 1}`, [
+      line("Bullet", [7, y], [7.01, y]), line("Text", [10.5, y], [endX, y]),
+    ], animated([
+      { t: 0, value: [0, 0] }, { t: startFrame, value: [0, 0] },
+      { t: startFrame + 6, value: [1.4, 0] }, { t: startFrame + 16, value: [0, 0] },
+    ]), {}, 1.8)),
+  ]),
   plan: composition("Plan", [group("Magnifying glass", [shape("Lens", circle(8.5, 12.5, 6.5)),
     line("Handle", [13.1, 17.1], [18, 22])], fixed([8.5, 12.5]), { a: fixed([8.5, 12.5]),
     r: animated([{ t: 0, value: [0] }, { t: 5, value: [-7] }, { t: 11, value: [4] },
