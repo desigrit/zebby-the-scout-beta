@@ -1,0 +1,25 @@
+name: Netflix Windows reader
+on:
+  push:
+    branches: [fix/netflix-filtered-board]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reader:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    env:
+      NETFLIX_BOARD: 'https://explore.jobs.netflix.net/careers?Teams=Product%20Management&Region=ucan&domain=netflix.com&sort_by=relevance'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/qa-netflix-diagnostic.mjs
