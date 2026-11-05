@@ -1882,15 +1882,16 @@ checks: try {
   await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
   // Updates are available in both navigation modes and Settings, without opening an installer during QA.
   await nav.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  const updatesSettings = page.getByRole('region', { name: 'Updates', exact: true });
+  await updatesSettings.getByRole('button', { name: 'Check for updates', exact: true }).click();
   await page.getByText('Up to date', { exact: true }).waitFor();
-  await page.evaluate(() => window.modelQA.updateState({ available: { version: '2.0.0', size: 100, sha256: 'a'.repeat(64),
-    installerUrl: 'https://github.com/desigrit/zebby-the-scout-beta/releases/download/v2.0.0/Zebby-Beta-2.0.0-mac-arm64.dmg',
-    releaseUrl: 'https://github.com/desigrit/zebby-the-scout-beta/releases/tag/v2.0.0' } }));
-  await page.locator('.desktop-sidebar').getByRole('button', { name: 'Update to 2.0.0', exact: true }).waitFor();
+  await page.evaluate(() => window.modelQA.updateState({ available: { version: '2.7.0-beta.10', size: 100, sha256: 'a'.repeat(64),
+    installerUrl: 'https://github.com/desigrit/zebby-the-scout-beta/releases/download/v2.7.0-beta.10/Zebby-Beta-2.7.0-beta.10-mac-arm64.dmg',
+    releaseUrl: 'https://github.com/desigrit/zebby-the-scout-beta/releases/tag/v2.7.0-beta.10' } }));
+  await page.locator('.desktop-sidebar').getByRole('button', { name: 'Update to 2.7.0-beta.10', exact: true }).waitFor();
   assert.equal(await page.locator('.sidebar-database').count(), 0);
   await captureSettings('updates-mac-collapsed.png');
-  await page.locator('.desktop-sidebar').getByRole('button', { name: 'Update to 2.0.0', exact: true }).click();
+  await updatesSettings.getByRole('button', { name: 'Update to 2.7.0-beta.10', exact: true }).click();
   await page.getByRole('button', { name: 'Downloading 40%', exact: true }).first().waitFor();
   assert.equal(await nav.getByRole('button', { name: 'Plan', exact: true }).isEnabled(), true);
   await page.evaluate(() => {
@@ -1902,7 +1903,7 @@ checks: try {
   await page.getByRole('button', { name: 'Collapse navigation', exact: true }).waitFor();
   await captureSettings('updates-mac-ready-dark.png');
   await page.evaluate(() => { window.modelQA.failInstall = true; });
-  await page.locator('.desktop-sidebar').getByRole('button', { name: 'Restart to update', exact: true }).click();
+  await updatesSettings.getByRole('button', { name: 'Restart to update', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'Synthetic database save failure' }).waitFor();
   assert.equal(await page.evaluate(() => document.querySelector('.desktop-workspace').inert), false);
   await page.evaluate(() => { window.modelQA.failInstall = false; });
