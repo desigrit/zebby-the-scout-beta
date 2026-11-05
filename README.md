@@ -24,7 +24,7 @@ Applications and Boards use separate SQLite files. The Applications schema stays
 
 Boards works on a local copy and publishes complete changes to your selected file. If a save fails, use **Retry save** or **Save recovery copy**. Quit the app and let OneDrive finish syncing before opening the same files on another computer.
 
-The beta stores API keys, wallet credentials, model downloads, and local caches in its own profile. Install updates manually from the beta repository.
+The beta stores API keys, wallet credentials, model downloads, and local caches in its own profile. For beta.3 and earlier, install the Windows x64 installer from [Beta releases](https://github.com/desigrit/zebby-the-scout-beta/releases) once. After that, open **Settings > Updates**, choose **Check for updates**, then **Update to** the offered version. Choose **Restart to update** when the download is ready.
 
 ## AI methods
 
@@ -50,6 +50,6 @@ npm run build
 npm run test:renderer
 ```
 
-Build a Windows x64 installer with `npm run desktop:package:win:x64`. The first package build downloads the bundled local inference runtime. The **Zebby Beta checks** workflow runs tests on pushes and can build an installer when started manually.
+Build a Windows x64 installer with `npm run desktop:package:win:x64`. The first package build downloads the bundled local inference runtime. The **Zebby Beta checks** workflow tests pull requests and packages the Windows x64 installer. Merging a new numbered beta version in `package.json` into `main` publishes the verified installer as a GitHub prerelease.
 
 [Boards architecture and checks](docs/boards.md) · [Public Zebby](https://github.com/desigrit/zebby-the-scout) · [Report a beta issue](https://github.com/desigrit/zebby-the-scout-beta/issues)

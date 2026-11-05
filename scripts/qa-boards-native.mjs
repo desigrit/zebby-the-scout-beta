@@ -30,7 +30,7 @@ try {
     await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Boards", exact: true }).click();
     await page.getByRole("main", { name: "Boards", exact: true }).waitFor();
     const state = await page.evaluate(() => window.desktop.state());
-    assert.equal(state.appName, "Zebby - Beta"); assert.equal(state.manualUpdates, true); assert.equal(state.filePath, "");
+    assert.equal(state.appName, "Zebby - Beta"); assert.equal(state.filePath, "");
     if (launch === 0) {
       await page.getByRole("button", { name: "Add your first boards" }).click();
       await page.getByRole("textbox", { name: "Board links", exact: true }).fill(boardUrl);

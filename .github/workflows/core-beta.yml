@@ -18,13 +18,38 @@ permissions:
 jobs:
   check:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+      previous: ${{ steps.version.outputs.previous }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Identify a new beta version
+        id: version
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          node --experimental-strip-types --input-type=module <<'JS'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { newerVersion } from './desktop/release-updates.ts';
+          const previous = JSON.parse(execFileSync('git', ['show', process.env.BEFORE + ':package.json'], { encoding: 'utf8' })).version;
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          if (previous !== version && (!/-beta\.[0-9]+$/.test(version) || !newerVersion(version, previous))) {
+            throw new Error('Choose a higher numbered beta version to publish a release.');
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, 'publish=' + (previous !== version) + '\nversion=' + version + '\nprevious=' + previous + '\n');
+          JS
       - run: npm ci
       - run: npm test
       - run: npx tsc --noEmit
@@ -44,12 +69,97 @@ jobs:
           retention-days: 1
       - run: npm run credits:build
       - name: Package Zebby - Beta for Windows
-        if: github.event_name == 'workflow_dispatch' && inputs.package_windows
+        if: github.event_name == 'pull_request' || steps.version.outputs.publish == 'true' || (github.event_name == 'workflow_dispatch' && inputs.package_windows)
         run: npm run desktop:package:win:x64
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch' && inputs.package_windows
+        if: github.event_name == 'pull_request' || steps.version.outputs.publish == 'true' || (github.event_name == 'workflow_dispatch' && inputs.package_windows)
         with:
           name: zebby-beta-windows-x64
           path: desktop-packages/Zebby-Beta-*.exe
           retention-days: 1
           if-no-files-found: error
+
+  publish:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      PREVIOUS: ${{ needs.check.outputs.previous }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zebby-beta-windows-x64
+          path: installer
+      - name: Publish the verified Windows installer
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { createHash } = require('node:crypto');
+            const { owner, repo } = context.repo;
+            const version = process.env.VERSION;
+            const tag = 'v' + version;
+            const name = 'Zebby-Beta-' + version + '-win-x64.exe';
+            const data = fs.readFileSync('installer/' + name);
+            const digest = 'sha256:' + createHash('sha256').update(data).digest('hex');
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({ owner, repo, tag })).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              release = (await github.rest.repos.createRelease({ owner, repo, tag_name: tag,
+                target_commitish: context.sha, name: 'Zebby - Beta ' + version, draft: true,
+                prerelease: true, generate_release_notes: true })).data;
+            }
+            if (release.draft && release.target_commitish !== context.sha) throw new Error('This draft belongs to a different commit.');
+            if (!release.draft) {
+              const { data: commit } = await github.rest.repos.getCommit({ owner, repo, ref: tag });
+              if (commit.sha !== context.sha) throw new Error('This version was already published from a different commit.');
+            }
+            const correct = asset => asset?.state === 'uploaded' && asset.size === data.byteLength && asset.digest === digest;
+            let asset = release.assets.find(asset => asset.name === name);
+            if (release.draft && !correct(asset)) {
+              if (asset) await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: asset.id });
+              asset = (await github.rest.repos.uploadReleaseAsset({ owner, repo, release_id: release.id,
+                name, data, headers: { 'content-type': 'application/octet-stream', 'content-length': data.byteLength } })).data;
+            }
+            if (!correct(asset)) throw new Error('The uploaded installer failed SHA-256 or size verification.');
+            if (release.draft) await github.rest.repos.updateRelease({ owner, repo, release_id: release.id, draft: false, prerelease: true });
+            await core.summary.addLink('Download Zebby - Beta for Windows x64', asset.browser_download_url).write();
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the published release through the desktop updater
+        shell: bash
+        run: |
+          node --experimental-strip-types --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { tmpdir } from 'node:os';
+          import path from 'node:path';
+          import { mkdtemp } from 'node:fs/promises';
+          import { setTimeout as wait } from 'node:timers/promises';
+          import { ReleaseUpdates } from './desktop/release-updates.ts';
+          import { SelfUpdater } from './desktop/self-update.ts';
+          const checker = new ReleaseUpdates({ version: process.env.PREVIOUS, platform: 'win32', arch: 'x64' });
+          let release;
+          for (let attempt = 0; attempt < 8; attempt++) {
+            const state = await checker.check(true);
+            release = state.available;
+            if (release?.version === process.env.VERSION) break;
+            await wait(10_000);
+          }
+          assert.equal(release?.version, process.env.VERSION);
+          const folder = await mkdtemp(path.join(tmpdir(), 'zebby-beta-release-'));
+          let phase;
+          const updater = new SelfUpdater({ folder, platform: 'win32', arch: 'x64', executable: '',
+            onChange: state => { phase = state.phase; } });
+          await updater.download(release);
+          assert.equal(phase, 'ready');
+          JS

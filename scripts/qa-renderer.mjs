@@ -1885,8 +1885,8 @@ checks: try {
   await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
   await page.getByText('Up to date', { exact: true }).waitFor();
   await page.evaluate(() => window.modelQA.updateState({ available: { version: '2.0.0', size: 100, sha256: 'a'.repeat(64),
-    installerUrl: 'https://github.com/desigrit/zebby-the-scout/releases/download/v2.0.0/Zebby-2.0.0-mac-arm64.dmg',
-    releaseUrl: 'https://github.com/desigrit/zebby-the-scout/releases/tag/v2.0.0' } }));
+    installerUrl: 'https://github.com/desigrit/zebby-the-scout-beta/releases/download/v2.0.0/Zebby-Beta-2.0.0-mac-arm64.dmg',
+    releaseUrl: 'https://github.com/desigrit/zebby-the-scout-beta/releases/tag/v2.0.0' } }));
   await page.locator('.desktop-sidebar').getByRole('button', { name: 'Update to 2.0.0', exact: true }).waitFor();
   assert.equal(await page.locator('.sidebar-database').count(), 0);
   await captureSettings('updates-mac-collapsed.png');

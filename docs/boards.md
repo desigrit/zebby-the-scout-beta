@@ -44,7 +44,7 @@ The beta copies the selected database into its local profile, checks for externa
 
 `desktop/boards-service.ts` serializes checks, deduplicates repeated clicks, supports cancellation before the save phase, and prevents results from being written to a changed board or database. The UI receives progress through IPC. Result caches contain validated extraction IDs, keyed by input, instructions, model, provider, thinking level and local endpoint. A paid extraction is cached before its receipt is acknowledged, so an interrupted scan can reuse it.
 
-Applications uses schema version 10. Boards writes to a separate database. Zebby - Beta has its own profile, model folder, and manual update process.
+Applications uses schema version 10. Boards writes to a separate database. Zebby - Beta has its own profile and model folder. Settings checks the beta repository for published updates.
 
 ## Credits service rollout
 

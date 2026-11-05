@@ -4,7 +4,7 @@ import { access, lstat, mkdir, open, readFile, rename, rm, writeFile } from "nod
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
-import type { UpdateState } from "./release-updates";
+import { installerFilename, isInstallerVersion, RELEASE_REPOSITORY, type UpdateState } from "./release-updates.ts";
 
 const execute = promisify(execFile);
 type Release = NonNullable<UpdateState["available"]>;
@@ -16,9 +16,9 @@ const UUID = "[\\da-f]{8}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{12}";
 
 export function macApplicationPath(executable: string) {
   const folder = path.resolve(path.dirname(executable), "../..");
-  if (executable.startsWith("/Volumes/") || folder.startsWith("/Volumes/") || path.basename(folder) !== "Zebby.app" || path.basename(path.dirname(executable)) !== "MacOS" ||
+  if (executable.startsWith("/Volumes/") || folder.startsWith("/Volumes/") || path.basename(folder) !== "Zebby - Beta.app" || path.basename(path.dirname(executable)) !== "MacOS" ||
       path.basename(path.dirname(path.dirname(executable))) !== "Contents") {
-    throw new Error("Install Zebby in Applications before using automatic updates.");
+    throw new Error("Install Zebby - Beta in Applications before using automatic updates.");
   }
   return folder;
 }
@@ -33,14 +33,14 @@ backup="$4"
 log="$5"
 case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
 parent="\${live%/*}"
-id="\${staged##*/.Zebby-update-}"
+id="\${staged##*/.Zebby-Beta-update-}"
 id="\${id%.app}"
-if [ "\${live##*/}" != 'Zebby.app' ] || [ "$staged" != "$parent/.Zebby-update-$id.app" ] ||
-   [ "$backup" != "$parent/.Zebby-backup-$id.app" ]; then exit 1; fi
+if [ "\${live##*/}" != 'Zebby - Beta.app' ] || [ "$staged" != "$parent/.Zebby-Beta-update-$id.app" ] ||
+   [ "$backup" != "$parent/.Zebby-Beta-backup-$id.app" ]; then exit 1; fi
 count=0
 while kill -0 "$pid" 2>/dev/null; do
   count=$((count + 1))
-  if [ "$count" -ge 180 ]; then printf '%s\\n' 'Zebby did not close. Update canceled.' >> "$log"; exit 1; fi
+  if [ "$count" -ge 180 ]; then printf '%s\\n' 'Zebby - Beta did not close. Update canceled.' >> "$log"; exit 1; fi
   sleep 1
 done
 if [ ! -d "$live" ] || [ ! -d "$staged" ] || [ -e "$backup" ]; then
@@ -90,16 +90,17 @@ export class SelfUpdater {
   }
   download(release: Release) {
     if (this.pending) return this.pending;
-    if (this.prepared?.version === release.version) return Promise.resolve();
+    if (this.prepared?.version === release.version && this.release?.installerUrl === release.installerUrl &&
+        this.release.sha256 === release.sha256 && this.release.size === release.size) return Promise.resolve();
+    this.prepared = null;
     this.release = structuredClone(release);
     this.pending = this.prepare(release).finally(() => { this.pending = null; this.controller = null; });
     return this.pending;
   }
   private async prepare(release: Release) {
-    const suffix = this.options.platform === "win32" ? `win-${this.options.arch || process.arch}.exe` : "mac-arm64.dmg";
-    const filename = `Zebby-${release.version}-${suffix}`;
-    if (!/^\d+\.\d+\.\d+$/.test(release.version) || !/^[\da-f]{64}$/.test(release.sha256) ||
-        ![release.version, `v${release.version}`].some((tag) => release.installerUrl === `https://github.com/desigrit/zebby-the-scout/releases/download/${tag}/${filename}`) ||
+    const filename = installerFilename(release.version, this.options.platform, this.options.arch || process.arch);
+    if (!/^[\da-f]{64}$/.test(release.sha256) ||
+        ![release.version, `v${release.version}`].some(tag => release.installerUrl === `${RELEASE_REPOSITORY}/releases/download/${tag}/${filename}`) ||
         !Number.isSafeInteger(release.size) || release.size <= 0 || release.size > 1024 * 1024 * 1024) {
       throw new Error("The update information is invalid.");
     }
@@ -175,10 +176,10 @@ export class SelfUpdater {
   }
   private validateMacPaths(prepared: Prepared) {
     const target = macApplicationPath(this.options.executable), parent = path.dirname(target);
-    const id = typeof prepared.staged === "string" ? new RegExp(`^\\.Zebby-update-(${UUID})\\.app$`).exec(path.basename(prepared.staged))?.[1] : "";
-    if (!id || prepared.target !== target || prepared.staged !== path.join(parent, `.Zebby-update-${id}.app`) ||
-        prepared.backup !== path.join(parent, `.Zebby-backup-${id}.app`) ||
-        prepared.installer !== path.join(this.options.folder, prepared.version, `Zebby-${prepared.version}-mac-arm64.dmg`) ||
+    const id = typeof prepared.staged === "string" ? new RegExp(`^\\.Zebby-Beta-update-(${UUID})\\.app$`).exec(path.basename(prepared.staged))?.[1] : "";
+    if (!id || prepared.target !== target || prepared.staged !== path.join(parent, `.Zebby-Beta-update-${id}.app`) ||
+        prepared.backup !== path.join(parent, `.Zebby-Beta-backup-${id}.app`) ||
+        prepared.installer !== path.join(this.options.folder, prepared.version, installerFilename(prepared.version, "darwin", "arm64")) ||
         prepared.helper !== path.join(this.options.folder, prepared.version, `install-${id}.sh`)) throw new Error("The update recovery path is invalid.");
   }
   private async checkMacFiles(prepared: Prepared) {
@@ -197,20 +198,20 @@ export class SelfUpdater {
     const plist = path.join(bundle, "Contents", "Info.plist");
     const identifier = await this.run("/usr/libexec/PlistBuddy", ["-c", "Print:CFBundleIdentifier", plist]);
     const builtVersion = await this.run("/usr/libexec/PlistBuddy", ["-c", "Print:CFBundleShortVersionString", plist]);
-    if (identifier.stdout.trim() !== "com.desigrit.pmapplications" || builtVersion.stdout.trim() !== version) throw new Error("The downloaded app did not match this update.");
+    if (identifier.stdout.trim() !== "com.desigrit.zebbycore" || builtVersion.stdout.trim() !== version) throw new Error("The downloaded app did not match this update.");
   }
   private async prepareMac(folder: string, installer: string, version: string) {
     const target = macApplicationPath(this.options.executable), id = randomUUID();
     if (!(await lstat(target)).isDirectory() || (await lstat(target)).isSymbolicLink()) throw new Error("The installed app folder is invalid.");
     await access(path.dirname(target), constants.W_OK);
-    const staged = path.join(path.dirname(target), `.Zebby-update-${id}.app`);
-    const backup = path.join(path.dirname(target), `.Zebby-backup-${id}.app`);
+    const staged = path.join(path.dirname(target), `.Zebby-Beta-update-${id}.app`);
+    const backup = path.join(path.dirname(target), `.Zebby-Beta-backup-${id}.app`);
     const mount = path.join(folder, `mount-${id}`), helper = path.join(folder, `install-${id}.sh`);
     await mkdir(mount);
     let mounted = false;
     try {
       await this.run("/usr/bin/hdiutil", ["attach", installer, "-nobrowse", "-readonly", "-mountpoint", mount]); mounted = true;
-      const bundle = path.join(mount, "Zebby.app");
+      const bundle = path.join(mount, "Zebby - Beta.app");
       await this.checkBundle(bundle, version);
       await this.run("/usr/bin/ditto", [bundle, staged]);
       await writeFile(helper, macUpdateScript(), { mode: 0o700 });
@@ -245,12 +246,12 @@ export class SelfUpdater {
   async cleanupInstalled(version: string) {
     const prepared = await this.readPending();
     if (!prepared) return;
-    if (prepared.version !== version || !/^\d+\.\d+\.\d+$/.test(version)) return;
+    if (prepared.version !== version || !isInstallerVersion(version)) return;
     if (prepared.backup && this.options.platform === "darwin") {
       this.validateMacPaths(prepared);
       await rm(prepared.backup, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     }
-    await rm(path.join(this.options.folder, version), { recursive: true, force: true });
+    await rm(path.join(this.options.folder, version), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     await rm(path.join(this.options.folder, "pending.json"), { force: true });
   }
 }

@@ -1,5 +1,6 @@
-export const RELEASE_REPOSITORY = "https://github.com/desigrit/zebby-the-scout";
-const LATEST_RELEASE = "https://api.github.com/repos/desigrit/zebby-the-scout/releases/latest";
+const REPOSITORY = "desigrit/zebby-the-scout-beta";
+export const RELEASE_REPOSITORY = `https://github.com/${REPOSITORY}`;
+const RELEASES_API = `https://api.github.com/repos/${REPOSITORY}/releases`;
 const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
 
 export type UpdateState = {
@@ -12,29 +13,43 @@ export type UpdateState = {
 };
 
 function versionParts(value: string) {
-  const match = /^v?(\d{1,8})\.(\d{1,8})\.(\d{1,8})$/.exec(value);
-  return match ? match.slice(1).map(Number) : null;
+  const match = /^v?(0|[1-9]\d{0,7})\.(0|[1-9]\d{0,7})\.(0|[1-9]\d{0,7})(?:-beta\.(0|[1-9]\d{0,7}))?$/.exec(value);
+  if (!match) return null;
+  // A final release follows every numbered beta with the same three components.
+  return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] === undefined ? Infinity : Number(match[4])];
 }
 
 export function newerVersion(latest: string, current: string) {
   const next = versionParts(latest), installed = versionParts(current);
   if (!next || !installed) return false;
-  for (let index = 0; index < 3; index++) if (next[index] !== installed[index]) return next[index] > installed[index];
+  for (let index = 0; index < next.length; index++) if (next[index] !== installed[index]) return next[index] > installed[index];
   return false;
 }
 
-export function updateFromRelease(payload: unknown, current: string, platform: string, arch: string): UpdateState["available"] {
-  if (!payload || typeof payload !== "object") throw new Error("The release information was incomplete.");
-  const release = payload as Record<string, unknown>;
-  if (release.draft || release.prerelease || typeof release.tag_name !== "string" || !versionParts(release.tag_name)) return null;
-  if (!newerVersion(release.tag_name, current)) return null;
-  const version = release.tag_name.replace(/^v/, "");
+export function isInstallerVersion(value: string) { return !value.startsWith("v") && versionParts(value) !== null; }
+
+export function installerFilename(version: string, platform: string, arch: string) {
+  if (!isInstallerVersion(version)) throw new Error("The update version is invalid.");
   const suffix = platform === "win32" && ["x64", "arm64"].includes(arch) ? `win-${arch}.exe`
     : platform === "darwin" && arch === "arm64" ? "mac-arm64.dmg" : "";
   if (!suffix) throw new Error("An update installer is not available for this computer.");
-  const filename = `Zebby-${version}-${suffix}`;
-  const installerUrl = `${RELEASE_REPOSITORY}/releases/download/${release.tag_name}/${filename}`;
-  const releaseUrl = `${RELEASE_REPOSITORY}/releases/tag/${release.tag_name}`;
+  return `Zebby-Beta-${version}-${suffix}`;
+}
+
+function publishedTag(payload: unknown) {
+  if (!payload || typeof payload !== "object") return "";
+  const release = payload as Record<string, unknown>;
+  return release.draft === false && typeof release.tag_name === "string" && versionParts(release.tag_name) ? release.tag_name : "";
+}
+
+export function updateFromRelease(payload: unknown, current: string, platform: string, arch: string): UpdateState["available"] {
+  const tag = publishedTag(payload);
+  if (!tag || !newerVersion(tag, current)) return null;
+  const release = payload as Record<string, unknown>;
+  const version = tag.replace(/^v/, "");
+  const filename = installerFilename(version, platform, arch);
+  const installerUrl = `${RELEASE_REPOSITORY}/releases/download/${tag}/${filename}`;
+  const releaseUrl = `${RELEASE_REPOSITORY}/releases/tag/${tag}`;
   const asset = Array.isArray(release.assets) ? release.assets.find((item) =>
     item && item.name === filename && item.browser_download_url === installerUrl && item.state === "uploaded" && Number.isSafeInteger(item.size) && item.size > 0) : null;
   if (release.html_url !== releaseUrl || !asset) {
@@ -75,12 +90,23 @@ export class ReleaseUpdates {
   }
   private async run() {
     try {
-      const response = await (this.options.fetch || fetch)(LATEST_RELEASE, { headers: { Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "Zebby" }, signal: AbortSignal.timeout(10_000) });
-      if (!response.ok) throw new Error(`GitHub update check returned ${response.status}.`);
-      const body = await response.text();
-      if (body.length > 500_000) throw new Error("The update response was too large.");
-      const available = updateFromRelease(JSON.parse(body), this.options.version, this.options.platform, this.options.arch);
+      const signal = AbortSignal.timeout(20_000);
+      let newest: unknown = null, newestTag = this.options.version;
+      for (let page = 1; ; page++) {
+        const response = await (this.options.fetch || fetch)(`${RELEASES_API}?per_page=20&page=${page}`, {
+          headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "Zebby-Beta" }, signal });
+        if (!response.ok) throw new Error(`GitHub update check returned ${response.status}.`);
+        const body = await response.text();
+        if (body.length > 2_000_000) throw new Error("The update response was too large.");
+        const releases: unknown = JSON.parse(body);
+        if (!Array.isArray(releases)) throw new Error("The release list was incomplete.");
+        for (const release of releases) {
+          const tag = publishedTag(release);
+          if (tag && newerVersion(tag, newestTag)) { newest = release; newestTag = tag; }
+        }
+        if (!response.headers.get("link")?.includes('rel="next"')) break;
+      }
+      const available = updateFromRelease(newest, this.options.version, this.options.platform, this.options.arch);
       this.change({ available, checkedAt: new Date(this.options.now?.() ?? Date.now()).toISOString(), checking: false, error: "" });
     } catch (error) {
       this.options.onError?.(error);
