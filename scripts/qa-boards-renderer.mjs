@@ -70,8 +70,11 @@ export async function checkBoardsRenderer(page, nav) {
   assert.equal(await first.getByRole("button", { name: "Edit Slack board" }).isEnabled(), false); await capture("boards-checking");
   await first.getByRole("button", { name: "Cancel check" }).click(); await first.getByRole("button", { name: "Check for updates" }).waitFor();
   await page.evaluate(() => window.boardsQA.set({ dirty: true, error: "Boards changes are saved on this computer. Use Retry save when OneDrive is ready." }));
+  await page.locator(".boards-save-pending").waitFor();
   assert.equal(await first.getByRole("button", { name: "Check for updates" }).isEnabled(), false); await capture("boards-recovery");
-  await page.getByRole("button", { name: "Retry save", exact: true }).click(); assert.equal(await first.getByRole("button", { name: "Check for updates" }).isEnabled(), true);
+  await page.getByRole("button", { name: "Retry save", exact: true }).click();
+  await page.locator(".boards-save-pending").waitFor({ state: "hidden" });
+  assert.equal(await first.getByRole("button", { name: "Check for updates" }).isEnabled(), true);
   await page.getByRole("button", { name: "Check all", exact: true }).click(); assert.equal((await page.evaluate(() => window.boardsQA.get().progress)).length, 3);
   await page.evaluate(() => window.boardsQA.set({ progress: [] })); await nav.getByRole("button", { name: "Plan", exact: true }).click();
   await page.getByRole("main", { name: "Plan", exact: true }).waitFor();
