@@ -1,7 +1,16 @@
 name: Netflix Windows reader
+
 on:
-  push:
-    branches: [fix/netflix-filtered-board]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/board-browser.ts'
+      - 'desktop/netflix-board.ts'
+      - 'desktop/board-page.ts'
+      - 'desktop/boards-scan.ts'
+      - 'scripts/qa-board-reader.mjs'
+      - 'scripts/qa-netflix-board.mjs'
+      - '.github/workflows/netflix-reader.yml'
   workflow_dispatch:
 
 permissions:
@@ -10,7 +19,7 @@ permissions:
 jobs:
   reader:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 10
     env:
       NETFLIX_BOARD: 'https://explore.jobs.netflix.net/careers?Teams=Product%20Management&Region=ucan&domain=netflix.com&sort_by=relevance'
     steps:
@@ -22,4 +31,5 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node scripts/qa-netflix-diagnostic.mjs
+      - name: Verify the filtered Netflix board, cancellation and retry
+        run: node scripts/qa-board-reader.mjs "$env:NETFLIX_BOARD"

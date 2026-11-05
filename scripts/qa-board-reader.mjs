@@ -23,6 +23,8 @@ await build({ stdin: { resolveDir: process.cwd(), contents: `
   import { writeFile } from 'node:fs/promises';
   import { BoardBrowser } from './desktop/board-browser';
   import { scanBoard } from './desktop/boards-scan';
+  import { isNetflixSearch } from './desktop/netflix-board';
+  import { verifySavedNetflixBoard } from './scripts/qa-netflix-board.mjs';
   import { analyzeWithOllama } from './desktop/ollama';
   import { boardModelContract } from './shared/boards';
   app.setPath('userData', ${JSON.stringify(path.join(root, "profile"))});
@@ -30,14 +32,17 @@ await build({ stdin: { resolveDir: process.cwd(), contents: `
   app.whenReady().then(async () => {
   let failed = false;
   for (const [index, url] of ${JSON.stringify(urls)}.entries()) {
-    const controller = new AbortController(), reader = new BoardBrowser(controller.signal);
-    const originalRead = reader.read.bind(reader);
-    reader.read = async () => { const page = await originalRead();
-      await writeFile(${JSON.stringify(root)} + '/page-' + index + '.json', JSON.stringify(page, null, 2));
-      return page;
-    };
+    let reader;
     try {
       const model = ${JSON.stringify(model)};
+      if (!model && isNetflixSearch(new URL(url))) { await verifySavedNetflixBoard(url, ${JSON.stringify(root)}); continue; }
+      const controller = new AbortController();
+      reader = new BoardBrowser(controller.signal);
+      const originalRead = reader.read.bind(reader);
+      reader.read = async () => { const page = await originalRead();
+        await writeFile(${JSON.stringify(root)} + '/page-' + index + '.json', JSON.stringify(page, null, 2));
+        return page;
+      };
       const scan = await scanBoard({ url, reader, instructions: ${JSON.stringify(instructions)}, signal: controller.signal, provider: model ? 'ollama' : 'coverage-test', model: model || 'observed-ids', batchSize: model ? 12 : 40,
         extract: async input => model ? analyzeWithOllama({ baseUrl: 'http://localhost:11434', model,
           ...boardModelContract(input), content: JSON.stringify(input), thinkingLevel: 'off', signal: controller.signal })
@@ -47,7 +52,7 @@ await build({ stdin: { resolveDir: process.cwd(), contents: `
       await writeFile(${JSON.stringify(root)} + '/matches-' + index + '.json', JSON.stringify(matches, null, 2));
       console.log(JSON.stringify({ host: new URL(url).hostname, pages: scan.pages, jobs: scan.jobs.length, matches: matches.length, model: model || 'coverage-test', status: 'complete' }));
     } catch (error) { failed = true; console.error(new URL(url).hostname + ': ' + error.message); }
-    finally { reader.close(); }
+    finally { reader?.close(); }
   }
   app.exit(failed ? 1 : 0);
   }).catch(error => { console.error(error); app.exit(1); });

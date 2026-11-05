@@ -12,11 +12,11 @@ const root = await mkdtemp(path.join(tmpdir(), "zebby-boards-"));
 const bundle = path.join(root, "boards.mjs");
 await build({ stdin: { contents: `
   export * from './desktop/boards-store'; export * from './desktop/boards-scan';
-  export * from './desktop/boards-service'; export * from './desktop/board-page';
+  export * from './desktop/boards-service'; export * from './desktop/board-page'; export * from './desktop/netflix-board';
   export * from './desktop/beta-identity'; export * from './lib/board-identity';
   export * from './shared/boards';`, resolveDir: process.cwd() },
   outfile: bundle, bundle: true, platform: "node", format: "esm", target: "node22" });
-const { BoardsStore, BoardsService, scanBoard, boardJobIdentity, boardSearchKey, boardUrl,
+const { BoardsStore, BoardsService, NetflixBoardPages, scanBoard, boardJobIdentity, boardSearchKey, boardUrl,
   configureBetaProfile, validatedBoardExtraction } = await import(pathToFileURL(bundle).href);
 after(async () => { assert.ok(root.startsWith(path.resolve(tmpdir()) + path.sep)); await rm(root, { recursive: true, force: true }); });
 
@@ -183,6 +183,61 @@ const allLinks = async input => ({ listingIds: input.candidates.map(candidate =>
 const run = (reader, extract = allLinks, overrides = {}) => scanBoard({ url: saved.url, reader, extract, signal: new AbortController().signal,
   provider: "openai", model: "selected-model", progress() {}, ...overrides });
 const next = { id: "c0", text: "Go to next page", context: "", disabled: false };
+
+const netflixUrl = "https://explore.jobs.netflix.net/careers?Teams=Product%20Management&Region=ucan&domain=netflix.com&sort_by=relevance";
+const netflixFilters = { Teams: ["Product Management"], Region: ["ucan"] };
+const netflixBatch = (ids, count, query = netflixFilters) => ({ domain: "netflix.com", query, count,
+  positions: ids.map(id => ({ id, canonicalPositionUrl: "https://explore.jobs.netflix.net/careers/job/" + id,
+    name: "Role " + id, department: "Product Management", locations: ["Los Gatos"], isPrivate: false })) });
+function scanNetflix(batches, options = {}) {
+  const url = options.url || netflixUrl, requests = [];
+  const pages = new NetflixBoardPages(new URL(url), async (input, init) => {
+    const request = new URL(input);
+    assert.equal(request.origin + request.pathname, "https://explore.jobs.netflix.net/api/apply/v2/jobs");
+    assert.deepEqual(request.searchParams.getAll("Teams"), ["Product Management"]);
+    assert.deepEqual(request.searchParams.getAll("Region"), ["ucan"]);
+    assert.equal(request.searchParams.get("sort_by"), "relevance");
+    assert.equal(request.searchParams.has("pid"), false);
+    assert.equal(init.redirect, "error");
+    const payload = batches[requests.length];
+    requests.push(Number(request.searchParams.get("start")));
+    return Response.json(payload);
+  }, new AbortController().signal);
+  const reader = { open: async () => {}, read: () => pages.read(), next: id => pages.next(id), close: () => {} };
+  return { requests, scan: () => run(reader, options.extract || (() => assert.fail("Unexpected AI call")), { url, instructions: options.instructions }) };
+}
+
+test("Netflix collects every filtered position before classifying tracking instructions", async () => {
+  const search = scanNetflix([netflixBatch([100, 101], 3), netflixBatch([102], 3)], {
+    url: netflixUrl + "&pid=101", instructions: "Track Role 102",
+    extract: async input => {
+      assert.equal(input.task, "roles"); assert.deepEqual(search.requests, [0, 2]);
+      assert.deepEqual(input.candidates.map(role => role.title), ["Role 100", "Role 101", "Role 102"]);
+      assert.ok(input.candidates.every(role => role.department === "Product Management" && role.text.includes("Los Gatos")));
+      return { decisions: Object.fromEntries(input.candidates.map(role => [role.id, role.title === "Role 102"])) };
+    },
+  });
+  const result = await search.scan();
+  assert.equal(result.pages, 2);
+  assert.deepEqual(result.jobs.map(job => job.matches), [false, false, true]);
+  assert.equal(result.jobs[2].key, "https://explore.jobs.netflix.net/careers/job/102");
+});
+
+test("Netflix rejects dropped filters, changing totals, repeated IDs, partial and invalid batches", async () => {
+  const first = netflixBatch([100], 2);
+  const cases = [
+    [[{ ...first, query: { Region: ["ucan"] } }], /Teams filter/],
+    [[first, netflixBatch([101], 2, { ...netflixFilters, Region: [] })], /Region filter/],
+    [[first, netflixBatch([101], 3)], /count changed/],
+    [[first, netflixBatch([100], 2)], /repeated/],
+    [[first, netflixBatch([], 2)], /incomplete batch/],
+    [[netflixBatch([100, 100], 2)], /could be verified/],
+    [[{ ...first, positions: [{ ...first.positions[0], canonicalPositionUrl: "https://example.org/job/100" }] }], /job ID/],
+    [[{ ...first, positions: [] , count: "0" }], /incomplete results/],
+  ];
+  for (const [batches, error] of cases) await assert.rejects(scanNetflix(batches).scan(), error);
+  assert.deepEqual((await scanNetflix([netflixBatch([], 0)]).scan()).jobs, []);
+});
 
 test("instructions run after coverage checks and only matching new vacancies enter the unread count", () => fixture(async ({ store, file }) => {
   const instructions = "Look for Senior or Principal Product Manager roles only.";

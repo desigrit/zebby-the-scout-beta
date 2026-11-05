@@ -1,4 +1,5 @@
 import type { BoardCandidate, BoardControl } from "../shared/boards";
+import { isNetflixPosition, isNetflixSearch } from "./netflix-board";
 
 export type BoardPage = { url: string; title: string; summary: string; candidates: BoardCandidate[]; controls: BoardControl[];
   expectedTotal: number | null; pageNumber: number | null; pageCount: number | null;
@@ -56,12 +57,12 @@ export function captureBoardPage(sectionId?: string): BoardPage {
       disabled: element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true" });
   }
   const page = text.match(/page\s+(\d+)\s+(?:of|\/)\s*(\d+)/i);
-  const total = text.match(/\b(\d[\d,]*)\s+(?:open positions|open roles|items|jobs found|jobs available|results found|results|jobs)\b/i);
+  const total = text.match(/\b(\d[\d,]*)\s+(?:open (?:jobs|positions|roles)|items|jobs found|jobs available|results found|results|jobs)\b/i);
   const pageLinks = [...(root?.querySelectorAll<HTMLAnchorElement>('a[href]') ?? [])].filter(visible).map(link => {
     try { const url = new URL(link.href); return url.origin === location.origin && url.pathname === location.pathname ? Number(url.searchParams.get("page")) : 0; }
     catch { return 0; }
   }).filter(value => Number.isSafeInteger(value) && value > 0);
-  const empty = /\b(no (?:open |matching |available )?(?:jobs|positions|results)|0 (?:open positions|items|jobs|results))\b/i.test(text);
+  const empty = /\b(no (?:open |matching |available )?(?:jobs|positions|results)|0 (?:open (?:jobs|positions|roles)|items|jobs|results))\b/i.test(text);
   const height = document.documentElement.scrollHeight;
   return { url: location.href, title: document.title.slice(0, 300),
     summary: (text.slice(0, 1500) + "\n" + text.slice(-2500)).slice(0, 4000), candidates, controls,
@@ -79,6 +80,7 @@ export function isFigmaCareers(url: URL) {
 
 export function knownListing(url: string, board: string): boolean | null {
   const source = new URL(board), link = new URL(url);
+  if (isNetflixSearch(source)) return isNetflixPosition(link);
   if (isFigmaCareers(source) && ["boards.greenhouse.io", "job-boards.greenhouse.io"].includes(link.hostname) &&
       /^\/figma\/jobs\/\d+\/?$/.test(link.pathname)) return true;
   if (source.hostname === "slack.com") return link.hostname.endsWith(".myworkdayjobs.com") && /\/Slack\/job\//.test(link.pathname);
@@ -90,7 +92,8 @@ export function knownListing(url: string, board: string): boolean | null {
 }
 
 export function knownNext(page: BoardPage): string | null {
-  const host = new URL(page.url).hostname;
+  const source = new URL(page.url), host = source.hostname;
+  if (isNetflixSearch(source)) return page.controls[0]?.id || "";
   if (isFigmaCareers(new URL(page.url)) && !page.controls.length && !(page.pageCount && (page.pageNumber || 1) < page.pageCount)) return "";
   if (host === "slack.com") return "";
   if (host === "jobs.uber.com") {

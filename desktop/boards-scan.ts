@@ -1,4 +1,5 @@
 import { boardJobIdentity } from "../lib/board-identity";
+import { isNetflixSearch } from "./netflix-board";
 import { validatedBoardExtraction, type BoardCandidate, type BoardExtractionInput, type BoardScan } from "../shared/boards";
 import { isFigmaCareers, knownListing, knownNext, type BoardPage } from "./board-page";
 import type { BoardReader } from "./board-browser";
@@ -82,9 +83,10 @@ export async function scanBoard(options: { url: string; reader: BoardReader; ext
       .map((candidate, index) => ({ ...candidate, id: `l${index}` }));
     const size = Math.max(1, Math.min(options.batchSize || 40, 60));
     const jobs = new Map<string, BoardCandidate>(), toIdentify: BoardCandidate[] = [];
-    const figma = isFigmaCareers(new URL(options.url));
+    const source = new URL(options.url);
+    const verifiedLinks = isFigmaCareers(source) || isNetflixSearch(source);
     for (const link of links) {
-      if (figma && knownListing(link.url, options.url)) jobs.set(boardJobIdentity(link.url).key, link);
+      if (verifiedLinks && knownListing(link.url, options.url)) jobs.set(boardJobIdentity(link.url).key, link);
       else toIdentify.push(link);
     }
     for (let index = 0; index < toIdentify.length; index += size) {
