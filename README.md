@@ -9,14 +9,14 @@ This public beta extends [Zebby](https://github.com/desigrit/zebby-the-scout) wi
 ## Boards
 
 1. Open **Boards** and create a **Zebby Boards.sqlite** file, or open an existing one. Choose your OneDrive folder to share history across computers.
-2. Paste filtered company career-page links, one per line. You can rename each company.
+2. Paste company career-page links, one per line. In **Tracking instructions**, describe which openings to count. For example, “Look under the Product heading for product manager roles” or “Only track Senior or Principal Product Manager roles.” Leave it blank to track all openings.
 3. **Add and check** saves the first complete scan as a baseline. Existing listings start with a count of zero new listings.
 4. Use **Check for updates** or **Check all**. New listing counts accumulate until you choose **Mark as reviewed**.
 5. Open the saved website link to review the roles.
 
-Checks use the provider, model, and thinking level selected in Settings. AI identifies links to vacancies; code compares stable job IDs with saved history. A changed title, reordered page, or returning listing with the same ID does not count as new. Changing a board's filters starts a new baseline.
+Boards reads the full results list and uses the model selected in Settings to apply your instructions to each newly seen vacancy. It uses the title, section heading, and text visible in the listing row. Boards remembers each decision and counts new matches by job ID. Editing the link or instructions starts a fresh baseline on the next check.
 
-The reader includes pagination and coverage checks for Slack, Uber, and Meta, plus an AI navigation path for other public boards. Failed or incomplete checks keep the last successful date and count. Boards shows counts rather than individual jobs.
+The reader supports Figma's grouped openings, pagination and coverage checks for Slack, Uber, and Meta, and AI navigation for other public boards. Failed or incomplete checks keep the last successful date and count. Open the source link to review the roles.
 
 ## Your databases
 
@@ -24,7 +24,7 @@ Applications and Boards use separate SQLite files. The Applications schema stays
 
 Boards works on a local copy and publishes complete changes to your selected file. If a save fails, use **Retry save** or **Save recovery copy**. Quit the app and let OneDrive finish syncing before opening the same files on another computer.
 
-The beta stores API keys, wallet credentials, model downloads, and local caches in its own profile. Install updates manually from the beta repository.
+The beta stores API keys, wallet credentials, model downloads, and local caches in its own profile. For beta.3 and earlier, install the Windows x64 installer from [Beta releases](https://github.com/desigrit/zebby-the-scout-beta/releases) once. After that, open **Settings > Updates**, choose **Check for updates**, then **Update to** the offered version. Choose **Restart to update** when the download is ready.
 
 ## AI methods
 
@@ -50,6 +50,6 @@ npm run build
 npm run test:renderer
 ```
 
-Build a Windows x64 installer with `npm run desktop:package:win:x64`. The first package build downloads the bundled local inference runtime. The **Zebby Beta checks** workflow runs tests on pushes and can build an installer when started manually.
+Build a Windows x64 installer with `npm run desktop:package:win:x64`. The first package build downloads the bundled local inference runtime. The **Zebby Beta checks** workflow tests pull requests and packages the Windows x64 installer. Merging a new numbered beta version in `package.json` into `main` publishes the verified installer as a GitHub prerelease.
 
 [Boards architecture and checks](docs/boards.md) · [Public Zebby](https://github.com/desigrit/zebby-the-scout) · [Report a beta issue](https://github.com/desigrit/zebby-the-scout-beta/issues)

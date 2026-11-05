@@ -40,10 +40,10 @@ import { materializeTailoredResume } from "./resume-files";
 import { BoardsStore } from "./boards-store";
 import { BoardsService } from "./boards-service";
 import { BoardBrowser } from "./board-browser";
-import { boardExtractionInstructions, boardExtractionSchema, type BoardInput } from "../shared/boards";
+import { boardModelContract, type BoardInput } from "../shared/boards";
 import { CREDIT_SERVICE_URL } from "../shared/credit-service";
 import { distributionChannel as resolveDistributionChannel, readStorePackageFamily,
-  requireDurableDatabase, storeDataPaths, STORE_UPDATES_URI } from "./distribution";
+  requireDirectUpdates, requireDurableDatabase, storeDataPaths, STORE_UPDATES_URI } from "./distribution";
 
 protocol.registerSchemesAsPrivileged([{
   scheme: "tracker", privileges: { standard: true, secure: true, supportFetchAPI: true },
@@ -75,7 +75,7 @@ const analysisRequests = new AnalysisRequests((progress) => {
   try { mainWindow.webContents.send("desktop:analysis-progress", progress); }
   catch (error) { logDiagnostic("Could not send analysis progress", error); }
 });
-const updates = new ReleaseUpdates({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: distributionChannel, enabled: false,
+const updates = new ReleaseUpdates({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: distributionChannel, enabled: app.isPackaged,
   onChange: (value) => mainWindow?.webContents.send("desktop:updates-changed", value),
   onError: (error) => logDiagnostic("Could not check for updates", error) });
 let settings: { databasePath?: string; boardsDatabasePath?: string; encryptedApiKey?: string; appearance?: Appearance; sidebarCollapsed?: boolean;
@@ -90,7 +90,9 @@ function settingsPath() { return path.join(app.getPath("userData"), "settings.js
 function logsPath() { return path.join(app.getPath("userData"), "Logs"); }
 
 function directUpdater(): SelfUpdater {
-  throw new Error(`Install a new ${APP_NAME} build to update this app.`);
+  requireDirectUpdates(distributionChannel);
+  if (!selfUpdater || !app.isPackaged) throw new Error("Updates are available in the installed beta.");
+  return selfUpdater;
 }
 
 function checkDatabaseLocation(filePath: string) {
@@ -214,7 +216,7 @@ function state() {
     appearance: settings.appearance || "auto", sidebarCollapsed: settings.sidebarCollapsed === true,
     logsPath: logsPath(),
     platform: process.platform,
-    distributionChannel, appName: APP_NAME, manualUpdates: true,
+    distributionChannel, appName: APP_NAME,
     updates: updates.state,
   };
 }
@@ -784,10 +786,9 @@ function registerIpc() {
     if (!storeEdition) throw new Error("This installation receives updates in Zebby.");
     await shell.openExternal(STORE_UPDATES_URI);
   });
-  handle("desktop:confirm-update-loaded", () => undefined);
+  handle("desktop:confirm-update-loaded", async () => { if (app.isPackaged) await selfUpdater?.cleanupInstalled(app.getVersion()); });
   handle("desktop:download-update", async () => {
     const updater = directUpdater();
-    if (!app.isPackaged) throw new Error("Automatic updates are available in the installed app.");
     const available = updates.state.available;
     if (!available) throw new Error("Check for an available update first.");
     await updater.download(available);
@@ -796,11 +797,11 @@ function registerIpc() {
   handle("desktop:install-update", async () => {
     const updater = directUpdater();
     if (installingUpdate) return;
-    if (!app.isPackaged || updates.state.download.phase !== "ready") throw new Error("Download the update before restarting.");
-    if (activeApiRequests || activeSettingsRequests) throw new Error("Wait for analysis and saving to finish, then restart to update.");
+    if (updates.state.download.phase !== "ready") throw new Error("Download the update before restarting.");
+    if (activeApiRequests || activeSettingsRequests || analysisRequests.busy || boards.busy) throw new Error("Wait for board checks, analysis, and saving to finish before restarting to update.");
     installingUpdate = true;
     try {
-      await store.retrySync();
+      await Promise.all([store.retrySync(), boardsStore.retrySave()]);
       await Promise.all([modelDownloads.pause(), modelEngine.shutdown()]);
       await store.retrySync();
       await diagnosticLog.flush();
@@ -971,7 +972,6 @@ function createWindow() {
     logDiagnostic("Renderer process stopped", `${details.reason}, exit code ${details.exitCode}`));
   void mainWindow.loadURL("tracker://app/");
   mainWindow.on("closed", () => { mainWindow = null; void boards?.stop(); });
-  mainWindow.on("focus", () => { if (!storeEdition) void updates.check(); });
 }
 
 if (process.env.PM_TRACKER_TEST_USER_DATA) app.setPath("userData", path.resolve(process.env.PM_TRACKER_TEST_USER_DATA));
@@ -1015,7 +1015,8 @@ else {
           const value = await creditsClient.analyze(quote.id, input, signal, source, quote.model);
           return { value, acknowledge: () => creditsClient.acknowledge(quote.id) };
         }
-        const value = await analyzeWithSelectedProvider(boardExtractionInstructions, input, "board_extract", boardExtractionSchema,
+        const contract = boardModelContract(input);
+        const value = await analyzeWithSelectedProvider(contract.instructions, input, contract.name, contract.schema,
           "The board links could not be read.", selected, signal);
         return { value };
       },
@@ -1056,7 +1057,6 @@ else {
     createMenu();
     createWindow();
     void modelEngine.detectHardware();
-    if (!storeEdition) void updates.check();
     app.on("activate", () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
   }).catch((error) => { console.error("Could not start Zebby", error);
     logDiagnostic("Could not start the app", error);

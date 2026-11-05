@@ -62,21 +62,24 @@ export default function BoardsView({ desktop, openSettings, onDirtyChange }: { d
   const controls = useBoards(), { state, error, working, act } = controls;
   const [adding, setAdding] = useState(false), [editing, setEditing] = useState<Board | null>(null);
   const [links, setLinks] = useState(""), [company, setCompany] = useState("");
+  const [instructions, setInstructions] = useState("");
   const [databaseOpen, setDatabaseOpen] = useState(false);
-  const dirty = editing ? links !== editing.url || company !== editing.company : adding && Boolean(links || company);
+  const dirty = editing ? links !== editing.url || company !== editing.company || instructions !== (editing.instructions || "")
+    : adding && Boolean(links || company || instructions);
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   const model = desktop.analysisProvider === "openai" ? desktop.openaiModel : desktop.analysisProvider === "anthropic" ? desktop.anthropicModel
     : desktop.analysisProvider === "credits" ? desktop.credits.model : desktop.analysisProvider === "builtin" ? desktop.builtInModelId : desktop.ollamaModel;
   const method = { openai: "OpenAI", anthropic: "Anthropic", credits: "Zebby credits", builtin: "Downloaded model", ollama: "Local server" }[desktop.analysisProvider];
-  function reset() { setAdding(false); setEditing(null); setLinks(""); setCompany(""); }
+  function reset() { setAdding(false); setEditing(null); setLinks(""); setCompany(""); setInstructions(""); }
   async function save(event: React.FormEvent) {
     event.preventDefault();
     const success = await act(async () => {
       const urls = links.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
       if (!urls.length) throw new Error("Paste at least one board link.");
       if (editing && urls.length !== 1) throw new Error("Use one link when editing a board.");
-      if (editing) await window.desktop!.updateBoard(editing.id, { company: company.trim() || companyFromUrl(urls[0]), url: urls[0] });
-      else await window.desktop!.addBoards(urls.map(url => ({ url, company: company.trim() || companyFromUrl(url) })));
+      const inputs = urls.map(url => ({ url, company: company.trim() || companyFromUrl(url), instructions: instructions.trim() }));
+      if (editing) await window.desktop!.updateBoard(editing.id, inputs[0]);
+      else await window.desktop!.addBoards(inputs);
     });
     if (success) reset();
   }
@@ -84,7 +87,7 @@ export default function BoardsView({ desktop, openSettings, onDirtyChange }: { d
   function beginAdd() { if (canReplaceDraft()) { reset(); setAdding(true); } }
   function edit(board: Board) {
     if (editing?.id === board.id || !canReplaceDraft()) return;
-    setEditing(board); setCompany(board.company); setLinks(board.url); setAdding(false);
+    setEditing(board); setCompany(board.company); setLinks(board.url); setInstructions(board.instructions || ""); setAdding(false);
   }
   return <main className="desktop-main boards-page" aria-label="Boards">
     <div className="boards-toolbar"><div className="boards-title"><h1>Boards</h1><span className="boards-private">Private</span></div>
@@ -109,21 +112,30 @@ export default function BoardsView({ desktop, openSettings, onDirtyChange }: { d
           placeholder="Paste links here, one per line" onChange={event => setLinks(event.target.value)} disabled={working} /></label>
         <label className="boards-company-field"><span>Company name <small>(optional)</small></span><input value={company} maxLength={120}
           placeholder="Use the website name" onChange={event => setCompany(event.target.value)} disabled={working} /></label>
-        {editing && links.trim() !== editing.url && <p className="settings-help">Changing the link starts a new baseline on the next check.</p>}
+        <label><span>Tracking instructions <small>(optional)</small></span>
+          <textarea rows={2} value={instructions} maxLength={2000} disabled={working}
+            placeholder="Only track Senior or Principal Product Manager roles."
+            aria-describedby="board-instructions-help" onChange={event => setInstructions(event.target.value)} /></label>
+        <p id="board-instructions-help" className="board-field-help">{!editing && links.trim().split(/\r?\n/).filter(Boolean).length > 1
+          ? "These instructions apply to each link above. Leave blank to track all openings."
+          : "Describe the titles, seniority, or team headings to look for. Leave blank to track all openings."}</p>
+        {editing && (links.trim() !== editing.url || instructions.trim() !== (editing.instructions || "")) &&
+          <p className="settings-help">Changing the link or instructions starts a new baseline on the next check.</p>}
         {!editing && <p className="settings-help">The first check saves your starting point. Later checks look for new listings.</p>}
         <div className="boards-editor-actions"><button type="submit" className="button button-primary" disabled={working || state.dirty}>
           {working && <LoaderCircle size={16} className="spin" aria-hidden="true" />}{editing ? "Save board" : "Add and check"}</button>
           <button type="button" className="button button-secondary" disabled={working} onClick={reset}>Cancel</button></div>
       </form>}
       {!state.boards.length && !adding ? <div className="boards-empty"><h2>Your next opportunity starts here</h2>
-        <p>Save the filtered company career pages you check regularly.</p>
+        <p>Save the company career pages you check regularly.</p>
         <button type="button" className="button button-primary" onClick={() => setAdding(true)} disabled={state.dirty}><Plus size={17} aria-hidden="true" />Add your first boards</button></div>
       : state.boards.length > 0 && <div className="boards-list" aria-label="Saved boards">
         <div className="boards-columns" aria-hidden="true"><span>Company and board link</span><span>Last checked on</span><span>Updates</span><span /></div>
         {state.boards.map(board => {
           const progress = state.progress.find(item => item.boardId === board.id);
           return <article key={board.id} className="board-row" aria-label={board.company}>
-            <div className="board-identity"><strong>{board.company}</strong><a href={board.url} target="_blank" rel="noopener noreferrer" title={board.url}>{board.url}</a></div>
+            <div className="board-identity"><strong>{board.company}</strong><a href={board.url} target="_blank" rel="noopener noreferrer" title={board.url}>{board.url}</a>
+              {board.instructions && <span className="board-instructions" title={board.instructions}>{board.instructions}</span>}</div>
             <div className="board-date"><span className="board-mobile-label">Last checked on</span>{board.lastCheckedAt
               ? <time dateTime={board.lastCheckedAt} title={new Date(board.lastCheckedAt).toLocaleString()}>{new Date(board.lastCheckedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</time>
               : <span>Never checked</span>}</div>
@@ -131,6 +143,7 @@ export default function BoardsView({ desktop, openSettings, onDirtyChange }: { d
               {board.newCount > 0 ? <><span className="board-discoveries" role="status">{board.newCount} new {board.newCount === 1 ? "listing" : "listings"} found</span>
                 <button type="button" className="boards-text-action" disabled={working || state.dirty} onClick={() => void act(() => window.desktop!.markBoardReviewed(board.id, board.lastCheckId))}>
                   <Check size={14} aria-hidden="true" />Mark as reviewed</button></> : board.lastCheckedAt && <span className="board-no-updates">{board.error ? "Check incomplete" : "No new listings"}</span>}
+              {board.instructions && board.lastCheckedAt && <span className="board-match-total">{board.totalCount} matching {board.totalCount === 1 ? "role" : "roles"} at last check</span>}
               {progress && <span className="board-progress" role="status"><LoaderCircle size={13} className="spin" aria-hidden="true" />{progress.message}</span>}
             </div>
             <div className="board-actions">{progress ? <button type="button" className="button button-secondary" disabled={progress.phase === "saving"}

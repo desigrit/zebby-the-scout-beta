@@ -617,7 +617,7 @@ function SettingsView({ state, onState, onUpdate, onCheckUpdates, updateWorking 
     <section className="settings-section" aria-labelledby="updates-settings">
       <div className="settings-section-heading"><h2 id="updates-settings">Updates</h2><p>{state.appName || document.title} {state.updates.currentVersion}</p></div>
       <div className="settings-content">
-        {state.manualUpdates ? <a className="settings-link" href="https://github.com/desigrit/zebby-the-scout-beta" target="_blank" rel="noopener noreferrer">Open beta repository <ArrowUpRight size={15} aria-hidden="true" /></a> : state.distributionChannel === "store" ? <>
+        {state.distributionChannel === "store" ? <>
           <div className="settings-actions"><SettingsAction icon={ArrowUpRight} onClick={() => void checkUpdates()}>Open Microsoft Store</SettingsAction></div>
           <p className="settings-help">Updates are managed by Microsoft Store.</p>
         </> : <>
@@ -719,6 +719,7 @@ export default function App() {
     if (restart && document.querySelector('[role="dialog"], .desktop-dashboard .editor')) {
       setShellError("Finish editing the open form or dialog before updating."); return;
     }
+    if (restart && dirtyBoard && !window.confirm("Restart to update and discard unsaved changes to this board?")) return;
     if (restart && dirtyPlan && !window.confirm("Restart to update and discard unsaved changes to this plan?")) return;
     setUpdateWorking(true); setShellError("");
     try {

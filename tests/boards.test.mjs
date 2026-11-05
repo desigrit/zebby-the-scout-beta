@@ -28,7 +28,7 @@ async function fixture(work) {
 }
 const saved = { company: "Uber", url: "https://jobs.uber.com/en/jobs/?team=Product&countries=United+States" };
 const jobs = (...ids) => ids.map(id => boardJobIdentity(`https://jobs.uber.com/en/jobs/${id}/`));
-const scan = (...ids) => ({ jobs: jobs(...ids), pages: 1, provider: "openai", model: "selected-model" });
+const scan = (...ids) => ({ jobs: jobs(...ids).map(job => ({ ...job, matches: true })), pages: 1, provider: "openai", model: "selected-model" });
 const complete = (store, id, ...ids) => store.complete(id, store.get(id).revision, store.generation, scan(...ids));
 
 test("the first check is a baseline, discoveries accumulate, and reviews use the displayed watermark", () => fixture(async ({ store }) => {
@@ -67,6 +67,39 @@ test("renaming preserves history, changing filters creates a new baseline, and s
 test("duplicate links roll back the entire add, with no partial records", () => fixture(async ({ store }) => {
   await assert.rejects(store.add([saved, { ...saved, url: "https://jobs.uber.com/en/jobs?countries=United+States&team=Product" }]), /already saved/);
   assert.equal(store.list().length, 0); assert.equal(store.status.dirty, false);
+}));
+
+test("old Boards files keep their baseline and unread history when tracking instructions are introduced", () => fixture(async ({ store, file }) => {
+  const [id] = await store.add([saved]);
+  await complete(store, id, 1); await complete(store, id, 1, 2);
+  await store.close();
+  const original = new DatabaseSync(file);
+  original.exec("ALTER TABLE boards DROP COLUMN instructions; ALTER TABLE board_jobs DROP COLUMN matches; PRAGMA user_version=1;");
+  original.close();
+  const bytes = await readFile(file);
+  await store.open(file);
+  const board = store.get(id);
+  assert.equal(board.instructions, ""); assert.equal(board.newCount, 1); assert.equal(board.totalCount, 2);
+  assert.deepEqual(await readFile(file), bytes, "Opening alone leaves the shared file intact");
+  await complete(store, id, 1, 2, 3);
+  await store.close(); await store.open(file); assert.equal(store.get(id).newCount, 2);
+}));
+
+test("one link can have distinct instructions, and changing or clearing them starts a fresh baseline", () => fixture(async ({ store }) => {
+  const instructions = "Look for Senior or Principal Product Manager roles only.";
+  const [all, senior] = await store.add([saved, { ...saved, instructions }]);
+  await complete(store, senior, 1); await complete(store, senior, 1, 2);
+  await assert.rejects(store.add([{ ...saved, instructions: "  " + instructions + " " }]), /already saved/);
+  await assert.rejects(store.update(senior, { ...saved, instructions: "" }), /already saved/);
+  await store.update(senior, { ...saved, company: "Product roles" }); assert.equal(store.get(senior).newCount, 1);
+  assert.equal(store.get(senior).instructions, instructions);
+  const before = store.get(senior);
+  await store.update(senior, { ...saved, instructions: "Look under the Product heading." });
+  assert.equal(store.get(senior).newCount, 0); assert.equal(store.get(senior).lastCheckedAt, "");
+  await assert.rejects(store.complete(senior, before.revision, store.generation, scan(3)), /changed/);
+  assert.equal(store.knownMatches(senior, store.get(senior).revision).size, 0);
+  await store.remove(all); await store.update(senior, { ...saved, instructions: "" });
+  assert.equal(store.get(senior).instructions, ""); assert.equal(store.get(senior).revision, before.revision + 2);
 }));
 
 test("Boards cannot open or modify an Applications database", () => fixture(async ({ store, folder }) => {
@@ -150,6 +183,73 @@ const allLinks = async input => ({ listingIds: input.candidates.map(candidate =>
 const run = (reader, extract = allLinks, overrides = {}) => scanBoard({ url: saved.url, reader, extract, signal: new AbortController().signal,
   provider: "openai", model: "selected-model", progress() {}, ...overrides });
 const next = { id: "c0", text: "Go to next page", context: "", disabled: false };
+
+test("instructions run after coverage checks and only matching new vacancies enter the unread count", () => fixture(async ({ store, file }) => {
+  const instructions = "Look for Senior or Principal Product Manager roles only.";
+  const [id] = await store.add([{ ...saved, instructions }]);
+  const observed = [
+    { key: 1, title: "Product Manager", department: "Product" },
+    { key: 2, title: "Product Designer", department: "Design" },
+    { key: 3, title: "Senior Product Manager", department: "Product" },
+    { key: 4, title: "Principal Product Marketing Manager", department: "Marketing" },
+  ];
+  const classified = [];
+  const check = async (count, expectedTotal = count, invalid = false) => {
+    const board = store.get(id), candidates = observed.slice(0, count).map(({ key, title, department }) =>
+      ({ id: "l" + key, url: jobs(key)[0].url, text: title, title, department }));
+    const result = await run(readerFor([page([], { candidates, expectedTotal })]), async input => {
+      if (input.task !== "roles") return allLinks(input);
+      assert.equal(input.criteria, instructions);
+      assert.ok(input.candidates.every(item => item.title && item.department));
+      classified.push(input.candidates.map(item => item.title));
+      if (invalid) return { decisions: {} };
+      return { decisions: Object.fromEntries(input.candidates.map(item => [item.id, item.title === "Senior Product Manager"])) };
+    }, { instructions, knownMatches: store.knownMatches(id, board.revision) });
+    await store.complete(id, board.revision, store.generation, result);
+  };
+  await check(2); assert.equal(store.get(id).totalCount, 0); assert.ok(store.get(id).lastCheckedAt);
+  await check(4); assert.equal(store.get(id).newCount, 1); assert.equal(store.get(id).totalCount, 1);
+  assert.deepEqual(classified, [["Product Manager", "Product Designer"], ["Senior Product Manager", "Principal Product Marketing Manager"]]);
+  await store.close(); await store.open(file); await check(4);
+  assert.equal(classified.length, 2, "Previously excluded roles are not reconsidered or charged again");
+  const last = store.get(id).lastCheckId;
+  await assert.rejects(check(4, 5), /could be verified/);
+  observed.push({ key: 5, title: "Untitled role", department: "Product" });
+  await assert.rejects(check(5, 5, true), /classify every role/);
+  assert.equal(store.get(id).lastCheckId, last); assert.equal(store.get(id).newCount, 1);
+}));
+
+test("a role decision must account for each observed ID exactly once", () => {
+  const input = { task: "roles", criteria: "Look for product roles", candidates: [{ id: "l1" }, { id: "l2" }] };
+  for (const decisions of [{}, { l1: true }, { l1: true, l2: true, l3: false }, { l1: true, invented: false }]) {
+    assert.throws(() => validatedBoardExtraction({ decisions }, input), /classify every role/);
+  }
+  assert.throws(() => validatedBoardExtraction({ decisions: { l1: "false", l2: true } }, input));
+  assert.deepEqual(validatedBoardExtraction({ decisions: { l1: false, l2: false } }, input).decisions, { l1: false, l2: false });
+});
+
+test("a named heading constrains vacancies while compound instructions can span teams", async () => {
+  const url = "https://www.figma.com/careers/#job-openings";
+  const candidates = ["Design", "Product", "Marketing"].map((department, index) => ({
+    id: "l" + index, url: "https://boards.greenhouse.io/figma/jobs/" + (index + 1), department,
+    title: ["Product Designer", "Product Manager", "Product Marketing Manager"][index], text: department,
+  }));
+  const review = async instructions => {
+    const seen = [];
+    const result = await run(readerFor([page([], { url, candidates, expectedTotal: 3 })]), async input => {
+      assert.equal(input.task, "roles"); assert.equal(input.criteria, instructions);
+      seen.push(...input.candidates.map(item => item.department));
+      return { decisions: Object.fromEntries(input.candidates.map(item => [item.id, true])) };
+    }, { url, instructions });
+    return { seen, matches: result.jobs.filter(job => job.matches).length };
+  };
+  assert.deepEqual(await review("When looking for new openings here, look under the Product heading for product manager roles."),
+    { seen: ["Product"], matches: 1 });
+  for (const criteria of ["Track roles across Product and Design.", "Look for Senior or Principal Product Manager roles only.",
+    "Look under the Product heading for managers, or include any designer.", "Look under a different heading for managers."]) {
+    assert.deepEqual(await review(criteria), { seen: ["Design", "Product", "Marketing"], matches: 3 });
+  }
+});
 
 test("scanner walks every page, deduplicates IDs, and sends listing links rather than job descriptions", async () => {
   const reader = readerFor([page([1, 2], { controls: [next], pageNumber: 1, pageCount: 2, expectedTotal: 3 }), page([2, 3], { pageNumber: 2, pageCount: 2, expectedTotal: 3 })]);

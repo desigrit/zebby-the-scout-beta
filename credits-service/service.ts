@@ -13,12 +13,12 @@ import { ServiceError } from "./errors.ts";
 import { createWalletAccess } from "./wallet-access.ts";
 import { createWalletUsage } from "./wallet-usage.ts";
 import { z } from "zod";
-import { boardExtractionInstructions, boardExtractionSchema } from "../shared/boards.ts";
+import { boardModelContract } from "../shared/boards.ts";
 
 const uuid = z.string().uuid();
 const kindSchema = z.enum(["plan", "match", "resume", "board_extract"]);
-function contract(kind: "plan" | "match" | "resume" | "board_extract") {
-  if (kind === "board_extract") return { instructions: boardExtractionInstructions, schema: boardExtractionSchema, name: "board_extract" };
+function contract(kind: "plan" | "match" | "resume" | "board_extract", input: ReturnType<typeof validateInput>) {
+  if (kind === "board_extract" && "task" in input) return boardModelContract(input);
   return kind === "resume" ? { instructions: tailoringInstructions, schema: tailoringSchema, name: "tailored_resume" }
     : kind === "plan" ? { instructions: planInstructions, schema: planSchema, name: "resume_plan" }
     : { instructions: matchInstructions, schema: matchSchema, name: "resume_match" };
@@ -175,7 +175,7 @@ export function createService(config: ServiceConfig, dependencies: Dependencies 
         if (!wallet.astraUnlocked) throw new ServiceError(ASTRA_PACK_MESSAGE, 403);
       }
       const countInput = model.provider === "openai" ? countOpenAIAnalysisInput : countAnthropicAnalysisInput;
-      const inputTokens = await countInput({ model: model.id, key: providerKey(model.id), input, ...contract(value.kind),
+      const inputTokens = await countInput({ model: model.id, key: providerKey(model.id), input, ...contract(value.kind, input),
         thinkingLevel, signal, fetcher: send });
       signal.throwIfAborted();
       const outputTokens = creditOutputLimit(value.kind, thinkingLevel);
@@ -210,7 +210,7 @@ export function createService(config: ServiceConfig, dependencies: Dependencies 
       try {
         signal.throwIfAborted();
         const response = await onlineAnalysis({ model: model.id, key: providerKey(model.id), kind,
-          ...contract(kind), input, thinkingLevel, signal, fetcher: dependencies.fetcher, billingOwner: "zebby",
+          ...contract(kind, input), input, thinkingLevel, signal, fetcher: dependencies.fetcher, billingOwner: "zebby",
           maxOutputTokens: quote.output_limit });
         signal.throwIfAborted();
         const result = validateResult(response.result, kind, input), cost = usageCost(model, response.usage);

@@ -39,7 +39,6 @@ export type DesktopState = {
   distributionChannel: "direct" | "store";
   updates: UpdateState;
   appName?: string;
-  manualUpdates?: boolean;
 };
 
 export type DesktopBridge = {

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { AnalysisProvider } from "../shared/online-models";
-import { boardExtractionInstructions, validatedBoardExtraction, type BoardExtractionInput, type BoardProgress, type BoardsState } from "../shared/boards";
+import { boardModelContract, validatedBoardExtraction, type BoardExtractionInput, type BoardProgress, type BoardsState } from "../shared/boards";
 import { BoardsStore } from "./boards-store";
 import { scanBoard } from "./boards-scan";
 import type { BoardReader } from "./board-browser";
@@ -47,7 +47,7 @@ export class BoardsService<Selection extends BoardSelection> {
           const cacheRoot = path.join(this.dependencies.profile, "board-extractions");
           await mkdir(cacheRoot, { recursive: true });
           const extract = async (input: BoardExtractionInput) => {
-            const digest = createHash("sha256").update(JSON.stringify({ instructions: boardExtractionInstructions,
+            const digest = createHash("sha256").update(JSON.stringify({ instructions: boardModelContract(input).instructions,
               input, provider: selected.provider, model: selected.model, thinking: selected.thinkingLevel,
               endpoint: selected.provider === "ollama" ? selected.ollamaUrl : "" })).digest("hex");
             const cachePath = path.join(cacheRoot, digest + ".json");
@@ -74,6 +74,7 @@ export class BoardsService<Selection extends BoardSelection> {
             return result;
           };
           const scan = await scanBoard({ url: board.url, reader: this.dependencies.reader(signal), extract, signal,
+            instructions: board.instructions, knownMatches: board.instructions ? this.store.knownMatches(board.id, board.revision) : undefined,
             provider: selected.provider, model: selected.model, batchSize: selected.provider === "builtin" ? 4 : selected.provider === "ollama" ? 12 : 40,
             progress: report });
           signal.throwIfAborted(); report("Saving check", "saving");
