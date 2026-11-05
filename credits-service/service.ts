@@ -13,25 +13,32 @@ import { ServiceError } from "./errors.ts";
 import { createWalletAccess } from "./wallet-access.ts";
 import { createWalletUsage } from "./wallet-usage.ts";
 import { z } from "zod";
+import { boardExtractionInstructions, boardExtractionSchema } from "../shared/boards.ts";
 
 const uuid = z.string().uuid();
-const kindSchema = z.enum(["plan", "match", "resume"]);
-function contract(kind: "plan" | "match" | "resume") {
+const kindSchema = z.enum(["plan", "match", "resume", "board_extract"]);
+function contract(kind: "plan" | "match" | "resume" | "board_extract") {
+  if (kind === "board_extract") return { instructions: boardExtractionInstructions, schema: boardExtractionSchema, name: "board_extract" };
   return kind === "resume" ? { instructions: tailoringInstructions, schema: tailoringSchema, name: "tailored_resume" }
     : kind === "plan" ? { instructions: planInstructions, schema: planSchema, name: "resume_plan" }
     : { instructions: matchInstructions, schema: matchSchema, name: "resume_match" };
 }
 type PurchaseRow = { id: string; user_id: string; pack: string; cents: number; session_id: string | null; paid: boolean };
-type QuoteRow = { id: string; kind: "plan" | "match" | "resume"; model: string; thinking_level: string; price_version: string;
+type QuoteRow = { id: string; kind: "plan" | "match" | "resume" | "board_extract"; model: string; thinking_level: string; price_version: string;
   input_tokens: number; output_limit: number; maximum: number };
 type RunRow = { status: "reserved" | "completed" | "failed"; fresh?: boolean; result?: Record<string, unknown> | null;
-  id: string; quote_id: string; model: string; kind: "plan" | "match" | "resume"; cost: number };
+  id: string; quote_id: string; model: string; kind: "plan" | "match" | "resume" | "board_extract"; cost: number };
 const stripeCheckout = z.object({ id: z.string().regex(/^cs_[a-zA-Z0-9_]+$/), url: z.string().url() });
 const paidSession = z.object({ id: z.string(), payment_status: z.string(), currency: z.string(), amount_subtotal: z.number().int(),
   client_reference_id: uuid, payment_intent: z.string().startsWith("pi_"), metadata: z.object({ user_id: uuid, purchase_id: uuid, pack: z.string() }) });
 export { ServiceError } from "./errors.ts";
 export type Dependencies = { fetcher?: typeof fetch; now?: () => number };
 export function createService(config: ServiceConfig, dependencies: Dependencies = {}) {
+  function allowBoards(kind: string, walletId: string) {
+    if (kind === "board_extract" && !config.boardsWalletIds?.includes(walletId)) {
+      throw new ServiceError("Boards checks with Zebby credits are not enabled for this wallet.", 403);
+    }
+  }
   const send = dependencies.fetcher || fetch, now = dependencies.now || Date.now;
   const limits = new Map<string, { count: number; until: number }>();
   function rateLimit(key: string, maximum: number, duration = 60000) {
@@ -126,6 +133,7 @@ export function createService(config: ServiceConfig, dependencies: Dependencies 
       const id = uuid.parse(path.split("/").at(-1));
       const [run] = await rows<RunRow>("runs", `id=eq.${id}&user_id=eq.${account.id}&select=*`);
       if (!run) throw new ServiceError("Analysis not found.", 404);
+      allowBoards(run.kind, account.id);
       return { status: run.status, result: run.result, model: run.model, kind: run.kind, cost: run.cost,
         quoteId: run.quote_id, wallet: await rpc("wallet", { p_user: account.id }) };
     }
@@ -159,6 +167,7 @@ export function createService(config: ServiceConfig, dependencies: Dependencies 
     }
     if (method === "POST" && path === "/v1/quotes") {
       const value = z.object({ model: z.string(), kind: kindSchema, thinkingLevel: z.enum(CREDIT_THINKING_LEVELS).default("high"), input: z.unknown() }).strict().parse(body);
+      allowBoards(value.kind, account.id);
       const model = configuredModel(value.model), input = validateInput(value.input, value.kind);
       const thinkingLevel = validateOnlineThinking(model, value.thinkingLevel);
       if (creditModelNeedsPack(model.id)) {
@@ -181,6 +190,7 @@ export function createService(config: ServiceConfig, dependencies: Dependencies 
       const value = z.object({ quoteId: uuid, requestId: uuid, input: z.unknown() }).strict().parse(body);
       const [quote] = await rows<QuoteRow>("quotes", `id=eq.${value.quoteId}&user_id=eq.${account.id}&select=*`);
       if (!quote || quote.price_version !== PRICE_VERSION) throw new ServiceError("Request a fresh analysis quote.");
+      allowBoards(quote.kind, account.id);
       const kind = kindSchema.parse(quote.kind), model = configuredModel(quote.model), input = validateInput(value.input, kind);
       const thinkingLevel = validateOnlineThinking(model, quote.thinking_level);
       if (quote.output_limit !== creditOutputLimit(kind, thinkingLevel) ||

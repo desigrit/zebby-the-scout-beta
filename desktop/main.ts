@@ -16,7 +16,8 @@ import { localModelFolder } from "./local-model-storage";
 import { acceptModelTerms, modelTermsAccepted, type AcceptedModelTerms } from "./local-model-consent";
 import { parsePlanRecommendations } from "./plan-importance";
 import { freemem, totalmem, hostname } from "node:os";
-import { APP_NAME, configureApplicationProfile, migrateApplicationProfile, migrateModelFolder } from "./app-identity";
+import { migrateApplicationProfile, migrateModelFolder } from "./app-identity";
+import { CORE_APP_NAME as APP_NAME, configureCoreProfile as configureApplicationProfile } from "./beta-identity";
 import { ReleaseUpdates } from "./release-updates";
 import { SelfUpdater } from "./self-update";
 import { nativeWindowShell, windowColors, type Appearance } from "./window-appearance";
@@ -36,7 +37,12 @@ import { readResumeBlocks, resumeDocx, resumeHtml, tailoredBaseName } from "./ta
 import { applyResumeEdits, tailoringInstructions, tailoringSchema } from "../shared/tailored-resume";
 import { printResumePdf } from "./resume-pdf";
 import { materializeTailoredResume } from "./resume-files";
-import { distributionChannel as resolveDistributionChannel, readStorePackageFamily, requireDirectUpdates,
+import { BoardsStore } from "./boards-store";
+import { BoardsService } from "./boards-service";
+import { BoardBrowser } from "./board-browser";
+import { boardExtractionInstructions, boardExtractionSchema, type BoardInput } from "../shared/boards";
+import { CREDIT_SERVICE_URL } from "../shared/credit-service";
+import { distributionChannel as resolveDistributionChannel, readStorePackageFamily,
   requireDurableDatabase, storeDataPaths, STORE_UPDATES_URI } from "./distribution";
 
 protocol.registerSchemesAsPrivileged([{
@@ -50,6 +56,8 @@ const storeEdition = distributionChannel === "store";
 let storePaths: ReturnType<typeof storeDataPaths> | undefined;
 let mainWindow: BrowserWindow | null = null;
 let store: DesktopStore;
+let boardsStore: BoardsStore;
+let boards: BoardsService<ReturnType<typeof selectedAnalysis>>;
 let apiKey = "";
 let anthropicKey = "";
 let creditsClient: CreditsClient;
@@ -67,10 +75,10 @@ const analysisRequests = new AnalysisRequests((progress) => {
   try { mainWindow.webContents.send("desktop:analysis-progress", progress); }
   catch (error) { logDiagnostic("Could not send analysis progress", error); }
 });
-const updates = new ReleaseUpdates({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: distributionChannel,
+const updates = new ReleaseUpdates({ version: app.getVersion(), platform: process.platform, arch: process.arch, channel: distributionChannel, enabled: false,
   onChange: (value) => mainWindow?.webContents.send("desktop:updates-changed", value),
   onError: (error) => logDiagnostic("Could not check for updates", error) });
-let settings: { databasePath?: string; encryptedApiKey?: string; appearance?: Appearance; sidebarCollapsed?: boolean;
+let settings: { databasePath?: string; boardsDatabasePath?: string; encryptedApiKey?: string; appearance?: Appearance; sidebarCollapsed?: boolean;
   analysisProvider?: AnalysisProvider; ollamaUrl?: string; ollamaModel?: string; builtInModelId?: string;
   encryptedAnthropicKey?: string; encryptedCreditSession?: string; openaiModel?: string; anthropicModel?: string; creditModel?: string;
   thinkingLevels?: ThinkingPreferences;
@@ -81,10 +89,8 @@ const diagnosticLog = new DiagnosticLog(() => logsPath(), () => [apiKey, anthrop
 function settingsPath() { return path.join(app.getPath("userData"), "settings.json"); }
 function logsPath() { return path.join(app.getPath("userData"), "Logs"); }
 
-function directUpdater() {
-  requireDirectUpdates(distributionChannel);
-  if (!selfUpdater) throw new Error("The updater is not ready. Reopen Zebby and try again.");
-  return selfUpdater;
+function directUpdater(): SelfUpdater {
+  throw new Error("Install a Zebby Core beta build to update this app.");
 }
 
 function checkDatabaseLocation(filePath: string) {
@@ -148,7 +154,7 @@ async function loadSettings() {
     try { anthropicKey = safeStorage.decryptString(Buffer.from(settings.encryptedAnthropicKey, "base64")); }
     catch (error) { logDiagnostic("Could not read the saved Anthropic key", error); }
   }
-  creditsClient = new CreditsClient(process.env.ZEBBY_CREDITS_SERVICE_URL || "", {
+  creditsClient = new CreditsClient(process.env.ZEBBY_CREDITS_SERVICE_URL || CREDIT_SERVICE_URL, {
     save: async (value) => {
       if (value && !safeStorage.isEncryptionAvailable()) throw new Error("Secure storage is unavailable. Restore access to Windows secure storage or Mac Keychain before using paid credits.");
       const previous = settings.encryptedCreditSession;
@@ -159,7 +165,7 @@ async function loadSettings() {
       } catch (error) { settings.encryptedCreditSession = previous; throw error; }
     },
     onChange: () => mainWindow?.webContents.send("desktop:credits-changed", state()),
-    deviceName: `${process.platform === "darwin" ? "Mac" : "Windows"} · ${hostname().slice(0, 60)}`,
+    deviceName: `${process.platform === "darwin" ? "Mac" : "Windows"} Ã‚Â· ${hostname().slice(0, 60)}`,
   });
   if (unreadableProfile || settings.encryptedCreditSession && !safeStorage.isEncryptionAvailable()) creditsClient.restoreFailed();
   if (settings.encryptedCreditSession && safeStorage.isEncryptionAvailable()) {
@@ -208,7 +214,7 @@ function state() {
     appearance: settings.appearance || "auto", sidebarCollapsed: settings.sidebarCollapsed === true,
     logsPath: logsPath(),
     platform: process.platform,
-    distributionChannel,
+    distributionChannel, appName: APP_NAME, manualUpdates: true,
     updates: updates.state,
   };
 }
@@ -331,10 +337,10 @@ async function analyzeWithSelectedProvider(instructions: string, input: unknown,
       return analyzeWithOllama({ baseUrl, model, instructions: prompt, content: JSON.stringify(content), schema: format, thinkingLevel: level, signal, onProgress: progress });
     },
     openai: async (prompt, content, formatName, format) => (await onlineAnalysis({ model: selected.model, key: selected.apiKey, instructions: prompt,
-      input: content, name: formatName, schema: format, kind: formatName === "tailored_resume" ? "resume" : formatName === "resume_plan" ? "plan" : "match", thinkingLevel: selected.thinkingLevel, signal })).result,
+      input: content, name: formatName, schema: format, kind: formatName === "board_extract" ? "board_extract" : formatName === "tailored_resume" ? "resume" : formatName === "resume_plan" ? "plan" : "match", thinkingLevel: selected.thinkingLevel, signal })).result,
     anthropic: async (prompt, content, formatName, format) => (await onlineAnalysis({ model: selected.model,
       key: selected.apiKey, instructions: prompt, input: content, name: formatName, schema: format,
-      kind: formatName === "tailored_resume" ? "resume" : formatName === "resume_plan" ? "plan" : "match", thinkingLevel: selected.thinkingLevel, signal })).result,
+      kind: formatName === "board_extract" ? "board_extract" : formatName === "tailored_resume" ? "resume" : formatName === "resume_plan" ? "plan" : "match", thinkingLevel: selected.thinkingLevel, signal })).result,
     credits: async () => {
       const quote = paid && paidQuotes.get(paid.quoteId);
       if (!paid || !quote || quote.source.id !== paid.source.id || quote.source.kind !== paid.source.kind || quote.expires < Date.now()
@@ -591,12 +597,13 @@ function registerProtocol() {
 
 function registerIpc() {
   function walletChangesAllowed() {
-    if (analysisRequests.busy) throw new Error("Finish or cancel analysis before changing credit access.");
+    if (analysisRequests.busy || boards.busy) throw new Error("Finish or cancel analysis and board checks before changing credit access.");
     if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure storage is unavailable. Restore access to Windows secure storage or Mac Keychain before using paid credits.");
   }
   function handle<Args extends unknown[], Result>(channel: string,
     listener: (event: Electron.IpcMainInvokeEvent, ...args: Args) => Result | Promise<Result>) {
     ipcMain.handle(channel, async (event, ...args: Args) => {
+      if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error("This request must come from the Zebby workspace.");
       const started = Date.now();
       const trace = !["desktop:state", "desktop:refresh-credits", "desktop:credit-checkout-status"].includes(channel);
       const changing = !["desktop:state", "desktop:check-updates", "desktop:open-store-updates", "desktop:download-update", "desktop:install-update",
@@ -614,6 +621,68 @@ function registerIpc() {
     });
   }
   handle("desktop:state", () => state());
+  handle("boards:state", () => boards.state);
+  handle("boards:choose-database", async (_event, kind: "open" | "create") => {
+    boards.assertIdle();
+    if (!["open", "create"].includes(kind)) throw new Error("Choose whether to create or open a Boards database.");
+    const configured = settings.boardsDatabasePath || settings.databasePath;
+    const oneDrive = process.env.OneDrive || process.env.OneDriveConsumer;
+    const suggested = oneDrive ? path.join(oneDrive, "Work Applications") : "";
+    const folder = configured ? path.dirname(configured) : suggested && (await stat(suggested).catch(() => null))?.isDirectory() ? suggested : app.getPath("documents");
+    let file = "";
+    if (kind === "open") {
+      const result = await dialog.showOpenDialog(mainWindow!, { title: "Open Boards database", defaultPath: folder,
+        properties: ["openFile"], filters: [{ name: "Boards database", extensions: ["sqlite"] }] });
+      if (result.canceled) return null; file = result.filePaths[0];
+    } else {
+      const result = await dialog.showSaveDialog(mainWindow!, { title: "Create Boards database", defaultPath: path.join(folder, "Zebby Boards.sqlite"),
+        filters: [{ name: "Boards database", extensions: ["sqlite"] }] });
+      if (result.canceled || !result.filePath) return null; file = result.filePath;
+    }
+    boards.assertIdle();
+    if (kind === "create") await boardsStore.create(file); else await boardsStore.open(file);
+    await persistAnalysisSettings({ boardsDatabasePath: file });
+    boards.error = ""; boards.changed(); return boards.state;
+  });
+  handle("boards:retry-save", async () => {
+    try { await boardsStore.retrySave(); boards.error = ""; }
+    finally { boards.changed(); }
+    return boards.state;
+  });
+  handle("boards:save-recovery", async () => {
+    boards.assertIdle();
+    const result = await dialog.showSaveDialog(mainWindow!, { title: "Save Boards recovery copy", defaultPath: "Zebby Boards Recovery.sqlite",
+      filters: [{ name: "Boards database", extensions: ["sqlite"] }] });
+    if (result.canceled || !result.filePath) return null;
+    await boardsStore.saveRecoveryCopy(result.filePath);
+    await boardsStore.open(result.filePath);
+    await persistAnalysisSettings({ boardsDatabasePath: result.filePath });
+    boards.error = ""; boards.changed(); return boards.state;
+  });
+  handle("boards:add", async (_event, inputs: BoardInput[]) => {
+    if (!Array.isArray(inputs)) throw new Error("Add one board link per line.");
+    try { const ids = await boardsStore.add(inputs); return boards.check(ids); }
+    finally { boards.changed(); }
+  });
+  handle("boards:update", async (_event, id: string, input: BoardInput) => {
+    boards.assertIdle(id);
+    try { await boardsStore.update(id, input); return boards.state; }
+    finally { boards.changed(); }
+  });
+  handle("boards:remove", async (_event, id: string) => {
+    boards.assertIdle(id);
+    const board = boardsStore.get(id);
+    const response = await dialog.showMessageBox(mainWindow!, { type: "question", title: "Remove board?",
+      message: `Remove ${board.company} and its check history?`, buttons: ["Cancel", "Remove board"], defaultId: 0, cancelId: 0 });
+    if (response.response === 1) { boards.assertIdle(id); await boardsStore.remove(id); boards.changed(); }
+    return boards.state;
+  });
+  handle("boards:check", (_event, ids?: string[]) => boards.check(ids));
+  handle("boards:cancel", (_event, id: string) => boards.cancel(id));
+  handle("boards:reviewed", async (_event, id: string, through: number) => {
+    try { await boardsStore.reviewed(id, through); return boards.state; }
+    finally { boards.changed(); }
+  });
   handle("desktop:warm-credits-service", () => creditsClient.warmService());
   handle("desktop:refresh-credits", async () => { await creditsClient.refreshWallet(); return state(); });
   handle("desktop:refresh-credit-access", async () => { walletChangesAllowed(); await creditsClient.refreshAccess(); return state(); });
@@ -715,7 +784,7 @@ function registerIpc() {
     if (!storeEdition) throw new Error("This installation receives updates in Zebby.");
     await shell.openExternal(STORE_UPDATES_URI);
   });
-  handle("desktop:confirm-update-loaded", async () => { if (!storeEdition) await directUpdater().cleanupInstalled(app.getVersion()); });
+  handle("desktop:confirm-update-loaded", () => undefined);
   handle("desktop:download-update", async () => {
     const updater = directUpdater();
     if (!app.isPackaged) throw new Error("Automatic updates are available in the installed app.");
@@ -901,7 +970,7 @@ function createWindow() {
   mainWindow.webContents.on("render-process-gone", (_event, details) =>
     logDiagnostic("Renderer process stopped", `${details.reason}, exit code ${details.exitCode}`));
   void mainWindow.loadURL("tracker://app/");
-  mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.on("closed", () => { mainWindow = null; void boards?.stop(); });
   mainWindow.on("focus", () => { if (!storeEdition) void updates.check(); });
 }
 
@@ -931,6 +1000,29 @@ else {
     logEvent(`Zebby starting (${app.getVersion()}, ${process.platform}/${process.arch}, profile ${app.getPath("userData")})`);
     store = new DesktopStore(storePaths?.recovery || app.getPath("userData"), logEvent);
     await loadSettings();
+    boardsStore = new BoardsStore(app.getPath("userData"));
+    boards = new BoardsService(boardsStore, {
+      profile: app.getPath("userData"), selection: selectedAnalysis, reader: signal => new BoardBrowser(signal),
+      changed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("boards:changed", boards.state); },
+      acknowledgeCached: async (selected, input, sourceId) => {
+        if (selected.provider === "credits") await creditsClient.acknowledgeCachedSource({ kind: "board_extract", id: sourceId }, input);
+      },
+      extract: async (selected, input, signal, sourceId) => {
+        if (selected.provider === "credits") {
+          const source = { kind: "board_extract" as const, id: sourceId };
+          const quote = await creditsClient.recoveryQuote(source, input) || await creditsClient.quote("board_extract", input, selected.model, selected.thinkingLevel);
+          signal.throwIfAborted();
+          const value = await creditsClient.analyze(quote.id, input, signal, source, quote.model);
+          return { value, acknowledge: () => creditsClient.acknowledge(quote.id) };
+        }
+        const value = await analyzeWithSelectedProvider(boardExtractionInstructions, input, "board_extract", boardExtractionSchema,
+          "The board links could not be read.", selected, signal);
+        return { value };
+      },
+    });
+    try {
+      if (!await boardsStore.recoverOnStartup() && settings.boardsDatabasePath) await boardsStore.open(settings.boardsDatabasePath);
+    } catch (error) { boards.error = error instanceof Error ? error.message : "The Boards database could not be opened."; }
     nativeTheme.themeSource = settings.appearance === "auto" || !settings.appearance ? "system" : settings.appearance;
     nativeTheme.on("updated", updateWindowAppearance);
     const downloadErrors = new Map<string, string>();
@@ -946,15 +1038,11 @@ else {
     const platformFolder = `${process.platform === "darwin" ? "mac" : "win"}-${process.arch}`;
     const runtimeFolder = app.isPackaged ? path.join(process.resourcesPath, "local-runtime")
       : path.resolve(appRoot, "../build/llama", platformFolder);
-    const localAppData = storeEdition || process.env.PM_TRACKER_TEST_USER_DATA ? undefined : process.env.LOCALAPPDATA;
+    const localAppData: string | undefined = undefined;
     const modelsFolder = localModelFolder(app.getPath("userData"), process.platform, localAppData);
     if (!storeEdition) {
       await migrateModelFolder(path.join(profile.folder, "Models"), modelsFolder);
-      if (process.platform === "win32" && localAppData && path.win32.isAbsolute(localAppData)) {
-        for (const name of ["PM Application Tracker", "pm-application-tracker"]) {
-          await migrateModelFolder(path.join(localAppData, name, "Models"), modelsFolder);
-        }
-      }
+
     }
     modelDownloads = new LocalModelDownloads(modelsFolder, { onChange: modelsChanged, licensesFolder: path.join(runtimeFolder, "model-licenses") });
     await modelDownloads.initialize();
@@ -984,9 +1072,9 @@ else {
       event.preventDefault(); shuttingDown = true;
       logEvent("Zebby closing; stopping model workers and flushing logs");
       analysisRequests.cancelAll();
-      void Promise.all([modelDownloads?.pause(), modelEngine?.shutdown(), selfUpdater?.cancel()])
+      void Promise.all([boards?.stop(), modelDownloads?.pause(), modelEngine?.shutdown(), selfUpdater?.cancel()])
         .catch((error) => logDiagnostic("Could not stop the local model", error))
-        .then(async () => { store?.close(); await diagnosticLog.flush(); })
+        .then(async () => { store?.close(); await boardsStore?.close(); await diagnosticLog.flush(); })
         .finally(() => app.quit());
     } else store?.close();
   });

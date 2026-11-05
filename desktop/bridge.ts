@@ -5,6 +5,7 @@ import type { AnalysisProvider, AnalysisSource, CreditQuote, CreditsState } from
 import type { WalletPairing } from "../shared/wallet-access";
 import type { ThinkingCapability, ThinkingPreferences } from "../shared/thinking";
 import type { AnalysisProgress } from "../shared/analysis-progress";
+import type { BoardInput, BoardsState } from "../shared/boards";
 
 export type DesktopState = {
   filePath: string;
@@ -37,9 +38,22 @@ export type DesktopState = {
   platform: string;
   distributionChannel: "direct" | "store";
   updates: UpdateState;
+  appName?: string;
+  manualUpdates?: boolean;
 };
 
 export type DesktopBridge = {
+  boardsState(): Promise<BoardsState>;
+  chooseBoardsDatabase(kind: "open" | "create"): Promise<BoardsState | null>;
+  retryBoardsSave(): Promise<BoardsState>;
+  saveBoardsRecovery(): Promise<BoardsState | null>;
+  addBoards(inputs: BoardInput[]): Promise<BoardsState>;
+  updateBoard(id: string, input: BoardInput): Promise<BoardsState>;
+  removeBoard(id: string): Promise<BoardsState>;
+  checkBoards(ids?: string[]): Promise<BoardsState>;
+  cancelBoardCheck(id: string): Promise<boolean>;
+  markBoardReviewed(id: string, throughCheckId: number): Promise<BoardsState>;
+  onBoardsChanged(callback: (value: BoardsState) => void): () => void;
   state(): Promise<DesktopState>;
   cancelAnalysis(id: string): Promise<boolean>;
   onAnalysisProgress(callback: (progress: AnalysisProgress) => void): () => void;

@@ -26,9 +26,9 @@ const walletSchema = z.object({ balance: integer, reserved: integer.nonnegative(
 const sessionSchema = z.object({ access_token: z.string().min(1).max(8192), refresh_token: z.string().min(1).max(8192),
   expires_at: z.number().optional(), expires_in: z.number().optional(), user: z.object({ email: z.string().email(), id: z.string().uuid() }) });
 const pendingSchema = z.object({ quoteId: z.string().uuid(), requestId: z.string().uuid(), userId: z.string().uuid(), hash: z.string(),
-  model: z.string(), expires: z.number(), source: z.object({ kind: z.enum(["plan", "match", "resume"]), id: z.string().uuid() }) });
+  model: z.string(), expires: z.number(), source: z.object({ kind: z.enum(["plan", "match", "resume", "board_extract"]), id: z.string().uuid() }) });
 const recoveredSchema = z.object({ status: z.enum(["reserved", "completed", "failed"]), result: z.record(z.unknown()).nullable(),
-  model: z.string(), kind: z.enum(["plan", "match", "resume"]), cost: integer.nonnegative(), quoteId: z.string().uuid(), wallet: walletSchema });
+  model: z.string(), kind: z.enum(["plan", "match", "resume", "board_extract"]), cost: integer.nonnegative(), quoteId: z.string().uuid(), wallet: walletSchema });
 type PendingRun = z.infer<typeof pendingSchema>;
 const storedSessionSchema = z.object({ access: z.string().min(1).max(8192), refresh: z.string().min(1).max(8192), expires: z.number(),
   email: z.union([z.string().email(), z.literal("")]), id: z.string().uuid(), kind: z.enum(["guest", "account"]).default("account"), deviceId: z.string().uuid().optional() });
@@ -412,6 +412,12 @@ export class CreditsClient {
     } catch (error) { if (error instanceof HttpError && error.status === 404) { await this.acknowledge(run.quoteId); return null; } throw error; }
   }
   async acknowledge(quoteId: string) { this.pending.delete(quoteId); await this.persist(); }
+  async acknowledgeCachedSource(source: AnalysisSource, input: unknown) {
+    const hash = hashInput(input);
+    for (const [id, run] of this.pending) if (run.userId === this.session?.id && run.source.kind === source.kind &&
+        run.source.id === source.id && run.hash === hash) this.pending.delete(id);
+    await this.persist();
+  }
   async analyze(quoteId: string, input: unknown, signal: AbortSignal, source?: AnalysisSource, model = DEFAULT_CREDIT_MODEL) {
     z.string().uuid().parse(quoteId);
     const generation = this.generation, hash = hashInput(input);

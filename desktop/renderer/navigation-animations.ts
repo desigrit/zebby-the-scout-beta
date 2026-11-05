@@ -1,5 +1,5 @@
 // Smart search plus Lucide's briefcase and sliders, authored as offline Lottie shapes.
-export type NavigationKind = "plan" | "applications" | "settings";
+export type NavigationKind = "plan" | "applications" | "boards" | "settings";
 type Point = [number, number];
 const fixed = (k: unknown) => ({ a: 0, k });
 const curve = (v: Point[], c = false, i = v.map(() => [0, 0]), o = v.map(() => [0, 0])) => ({ v, c, i, o });
@@ -40,6 +40,8 @@ function sparkle(name: string, shapes: unknown[], center: Point, start: number) 
 }
 const sliderMotion = (x: number) => animated([{ t: 0, value: [0, 0] }, { t: 9, value: [x, 0] }, { t: 24, value: [0, 0] }]);
 export const navigationAnimations: Record<NavigationKind, ReturnType<typeof composition>> = {
+  boards: composition("Boards", [group("Panels", [shape("Frame", rounded(3, 3, 18, 18, 2)),
+    line("Header", [3, 8], [21, 8]), line("Column", [9, 8], [9, 21])])]),
   plan: composition("Plan", [group("Magnifying glass", [shape("Lens", circle(8.5, 12.5, 6.5)),
     line("Handle", [13.1, 17.1], [18, 22])], fixed([8.5, 12.5]), { a: fixed([8.5, 12.5]),
     r: animated([{ t: 0, value: [0] }, { t: 5, value: [-7] }, { t: 11, value: [4] },

@@ -1,7 +1,7 @@
 import type { WalletAccess } from "./wallet-access.ts";
 
 export type AnalysisProvider = "ollama" | "builtin" | "openai" | "anthropic" | "credits";
-export type AnalysisKind = "plan" | "match" | "resume";
+export type AnalysisKind = "plan" | "match" | "resume" | "board_extract";
 export const PRICE_VERSION = "2026-10-31-claude-credits";
 export const DEFAULT_CREDIT_MODEL = "gpt-6.1-sol";
 export const ASTRA_MODEL = "gpt-6-astra";

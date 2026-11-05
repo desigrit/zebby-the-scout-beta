@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { ArrowRight, ArrowUpRight, Check, FileText, FolderOpen,
   LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCw, Search, Sparkles, Sun, Trash2 } from "lucide-react";
 import ApplicationDashboard from "./ApplicationDashboard";
+import BoardsView, { BoardsDatabaseSettings } from "./BoardsView";
 import LocationEditor from "./LocationEditor";
 import ResumePicker from "./ResumePicker";
 import AnalysisErrorBanner from "./AnalysisErrorBanner";
@@ -27,7 +28,7 @@ import { LOCAL_MODELS } from "../local-model-catalog";
 import { importanceForTerms } from "../plan-importance";
 import { useInteractiveScrollbars, useWorkspaceShortcuts } from "./useWorkspaceShortcuts";
 
-type Tab = "plan" | "applications" | "settings";
+type Tab = "plan" | "applications" | "boards" | "settings";
 
 function emptyPlan(currentOverview = ""): PlanInput {
   return { listingUrl: "", company: "", title: "", team: "", locations: "",
@@ -590,6 +591,7 @@ function SettingsView({ state, onState, onUpdate, onCheckUpdates, updateWorking 
       <div className="settings-content"><AnalysisSettings state={state} onState={onState} openCredits={openCredits} /></div>
     </section>
     <CreditsSettings />
+    <BoardsDatabaseSettings />
     <section className="settings-section" aria-labelledby="appearance-settings">
       <div className="settings-section-heading"><h2 id="appearance-settings">Appearance</h2></div>
       <div className="settings-content"><div className="appearance-options" role="radiogroup" aria-label="Appearance">
@@ -607,7 +609,7 @@ function SettingsView({ state, onState, onUpdate, onCheckUpdates, updateWorking 
         <div className="settings-links">
           <button className="settings-link" type="button" onClick={() => void openLogs()} disabled={working}>
             Open logs folder <ArrowUpRight size={15} aria-hidden="true" /></button>
-          <a className="settings-link" href="https://github.com/desigrit/zebby-the-scout/issues/new" target="_blank" rel="noopener noreferrer">
+          <a className="settings-link" href="https://github.com/desigrit/zebby-the-scout-beta/issues/new" target="_blank" rel="noopener noreferrer">
             Report an issue <ArrowUpRight size={15} aria-hidden="true" /></a>
         </div>
       </div>
@@ -615,7 +617,7 @@ function SettingsView({ state, onState, onUpdate, onCheckUpdates, updateWorking 
     <section className="settings-section" aria-labelledby="updates-settings">
       <div className="settings-section-heading"><h2 id="updates-settings">Updates</h2><p>Zebby {state.updates.currentVersion}</p></div>
       <div className="settings-content">
-        {state.distributionChannel === "store" ? <>
+        {state.manualUpdates ? <a className="settings-link" href="https://github.com/desigrit/zebby-the-scout-beta" target="_blank" rel="noopener noreferrer">Open beta repository <ArrowUpRight size={15} aria-hidden="true" /></a> : state.distributionChannel === "store" ? <>
           <div className="settings-actions"><SettingsAction icon={ArrowUpRight} onClick={() => void checkUpdates()}>Open Microsoft Store</SettingsAction></div>
           <p className="settings-help">Updates are managed by Microsoft Store.</p>
         </> : <>
@@ -666,6 +668,7 @@ export default function App() {
   useWorkspaceShortcuts(settleTab);
   const scrollToAnalysis = useRef(false);
   const [dirtyPlan, setDirtyPlan] = useState(false);
+  const [dirtyBoard, setDirtyBoard] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [applicationSelection, setApplicationSelection] = useState<{ id: string; notice: string } | null>(null);
   const [databaseVersion, setDatabaseVersion] = useState(0);
@@ -679,10 +682,11 @@ export default function App() {
   }, [loaded]);
   const navigate = useCallback((target: Tab) => {
     if (target !== "plan" && dirtyPlan && !window.confirm("Discard unsaved changes to this plan?")) return false;
+    if (target !== "boards" && dirtyBoard && !window.confirm("Discard unsaved changes to this board?")) return false;
     scrollToAnalysis.current = false;
     setApplicationSelection(null); setTab(target);
     return true;
-  }, [dirtyPlan, setTab]);
+  }, [dirtyPlan, dirtyBoard, setTab]);
   useLayoutEffect(() => {
     if (tab === "settings" && scrollToAnalysis.current) {
       scrollToAnalysis.current = false;
@@ -737,7 +741,7 @@ export default function App() {
       setState(next); setDatabaseVersion((current) => current + 1); setSelectedPlanId(null); setApplicationSelection(null); setTab("plan");
     });
     const removeNavigate = window.desktop!.onNavigate((target) => {
-      if (target === "plan" || target === "applications" || target === "settings") navigate(target);
+      if (target === "plan" || target === "applications" || target === "boards" || target === "settings") navigate(target);
     });
     const removeModelsChanged = window.desktop!.onLocalModelsChanged((next) => {
       setState((current) => current ? { ...current, builtInModelId: next.builtInModelId,
@@ -768,7 +772,7 @@ export default function App() {
   return <SavedFeedbackProvider><AnalysisFlowProvider state={state} onState={setState} onOpenSettings={openAnalysisSettings}><BackgroundAnalysisProvider key={databaseVersion}><div className={`desktop-shell ${state.platform === "darwin" ? "platform-mac" : "platform-windows"}${state.sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
     <header className="desktop-titlebar" aria-label="Window title bar">
       <div className="titlebar-sidebar" aria-hidden="true" />
-      <div className="titlebar-caption">Zebby</div>
+      <div className="titlebar-caption">{state.appName || "Zebby"}</div>
     </header>
     <aside className="desktop-sidebar" inert={updateWorking && state.updates.download.phase === "ready" || state.updates.download.phase === "installing"}>
       <div className="sidebar-brand"><button className="sidebar-toggle" type="button" onClick={() => void toggleSidebar()}
@@ -779,6 +783,7 @@ export default function App() {
       <nav id="desktop-navigation" className="sidebar-nav" aria-label="Workspace">
         <NavigationButton kind="plan" label="Plan" selected={tab === "plan"} collapsed={state.sidebarCollapsed} onActivate={() => navigate("plan")} />
         <NavigationButton kind="applications" label="Applications" selected={tab === "applications"} collapsed={state.sidebarCollapsed} onActivate={() => navigate("applications")} />
+        <NavigationButton kind="boards" label="Boards" selected={tab === "boards"} collapsed={state.sidebarCollapsed} onActivate={() => navigate("boards")} />
         <NavigationButton kind="settings" label="Settings" selected={tab === "settings"} collapsed={state.sidebarCollapsed} onActivate={() => navigate("settings")} />
       </nav>
       {(state.updates.available || state.credits.wallet?.purchased || state.filePath && !state.sidebarCollapsed) && <div className="sidebar-footer">
@@ -797,7 +802,7 @@ export default function App() {
       {state.startupError && tab === "settings" && <div className="workspace-warning" role="alert">
         <span>The previous database could not be opened. Choose a database to continue.</span>
       </div>}
-      {!state.filePath ? (tab === "settings" ? <SettingsView state={state} onState={setState} onUpdate={() => void applyUpdate()} onCheckUpdates={checkUpdates} updateWorking={updateWorking} /> : <Welcome state={state} onState={setState} />)
+      {tab === "boards" ? <BoardsView desktop={state} openSettings={openAnalysisSettings} onDirtyChange={setDirtyBoard} /> : !state.filePath ? (tab === "settings" ? <SettingsView state={state} onState={setState} onUpdate={() => void applyUpdate()} onCheckUpdates={checkUpdates} updateWorking={updateWorking} /> : <Welcome state={state} onState={setState} />)
       : tab === "plan" ? <PlanView key={databaseVersion}
         analysisProvider={state.analysisProvider} ollamaModel={state.ollamaModel}
         builtInModelId={state.builtInModelId} builtInReady={Boolean(state.localModels?.some((model) =>

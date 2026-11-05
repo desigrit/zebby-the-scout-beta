@@ -51,3 +51,10 @@ credits-service/dist/
 /work/
 /.impeccable/review/
 *.tsbuildinfo
+
+# Personal databases and collection caches
+*.sqlite
+*.sqlite-*
+*.db
+boards-pending.json
+/board-extractions/

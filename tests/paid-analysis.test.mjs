@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { CREDIT_PACKS, CREDIT_ESTIMATE, CREDIT_MODELS, NANODOLLARS_PER_CREDIT, estimatedAnalyses, onlineModel, usageCost, maximumCost, creditOutputLimit, quoteNeedsCredits } from "../shared/online-models.ts";
@@ -343,6 +343,19 @@ test("credits client retains complete daily usage and accepts older wallets with
   }
 });
 
+test("cached Boards results acknowledge only matching receipts and retain other pending work", async () => {
+  const source = { kind: "board_extract", id: randomUUID() }, value = { candidates: ["l0"] };
+  const hash = createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const receipt = { quoteId: randomUUID(), requestId: randomUUID(), userId, hash, model: "gpt-6-luna", expires: Date.now() + 60000, source };
+  const other = { ...receipt, quoteId: randomUUID(), source: { kind: "plan", id: randomUUID() } };
+  let saved;
+  const client = new CreditsClient(config.publicUrl, { save: async snapshot => { saved = JSON.parse(snapshot); }, onChange() {},
+    fetcher: async () => { throw new Error("Cached results must not make a new paid request"); } });
+  client.restore(JSON.stringify({ url: config.publicUrl, session: { access: "fixture", refresh: "fixture", expires: Date.now() + 3600000, email: "peer@example.com", id: userId }, pending: [receipt, other] }));
+  await client.acknowledgeCachedSource(source, { candidates: ["different"] }); assert.equal(saved.pending.length, 2);
+  await client.acknowledgeCachedSource(source, value); assert.deepEqual(saved.pending, [other]);
+});
+
 test("a delayed refresh cannot replace a newer checkout wallet, including sub-millisecond ledger timestamps", async () => {
   const oldWallet = { balance: 1000000, used: 0, reserved: 0, purchased: 1000000, updatedAt: "2026-10-27T12:00:00.000001Z", recent: [] };
   const newWallet = { ...oldWallet, balance: 501000000, purchased: 501000000, updatedAt: "2026-10-27T12:00:00.000002+00:00" };
@@ -569,6 +582,37 @@ test("PostgreSQL ledger and service integration", async (t) => {
         const calls = providerCalls, charged = (await wallet()).used;
         await analyze(quoted.id, requestId, resumeInput);
         assert.equal(providerCalls, calls); assert.equal((await wallet()).used, charged);
+      } finally { expectedModel = "gpt-6.1-sol"; providerResult = plan; }
+    });
+    await t.test("Boards credits are owner-gated, validate observed IDs, migrate safely and charge once", async () => {
+      const before = await wallet(), quotes = (await db.query("select * from zebby_quotes order by id")).rows;
+      const migration = await readFile(new URL("../credits-service/migrations/20261104_boards.sql", import.meta.url), "utf8");
+      await db.exec(migration); await db.exec(migration);
+      assert.deepEqual(await wallet(), before); assert.deepEqual((await db.query("select * from zebby_quotes order by id")).rows, quotes);
+      const boardInput = { task: "listings", pageUrl: "https://jobs.uber.com/en/jobs/?team=Product", pageTitle: "Product jobs", summary: "Public listing links",
+        candidates: [{ id: "l0", url: "https://jobs.uber.com/en/jobs/123/", text: "Product Manager" }], controls: [], expectedListingCount: 1 };
+      const enabled = createService({ ...config, boardsWalletIds: [userId] }, { fetcher });
+      const call = (method, path, value, token = "owner") => enabled.handle(method, path, value, token, controller.signal);
+      const payload = { model: "gpt-6-luna", thinkingLevel: "high", kind: "board_extract", input: boardInput };
+      const quote = () => call("POST", "/v1/quotes", payload);
+      const calls = providerCalls;
+      await assert.rejects(handle("POST", "/v1/quotes", payload), /not enabled/);
+      await assert.rejects(call("POST", "/v1/quotes", payload, "other"), /not enabled/);
+      assert.equal(providerCalls, calls);
+      expectedModel = "gpt-6-luna";
+      try {
+        providerResult = { listingIds: ["invented"], nextControlId: "" };
+        await assert.rejects(call("POST", "/v1/analysis", { quoteId: (await quote()).id, requestId: randomUUID(), input: boardInput }));
+        assert.equal((await wallet()).balance, before.balance); assert.equal((await wallet()).reserved, 0);
+        providerResult = { listingIds: ["l0"], nextControlId: "" };
+        const quoted = await quote(), request = { quoteId: quoted.id, requestId: randomUUID(), input: boardInput };
+        await assert.rejects(handle("POST", "/v1/analysis", request), /not enabled/);
+        const response = await call("POST", "/v1/analysis", request);
+        assert.deepEqual(response.result, providerResult); assert.equal(lastProviderRequest.model, "gpt-6-luna");
+        assert.equal(lastProviderRequest.reasoning.effort, "high"); assert.equal(lastProviderRequest.text.format.name, "board_extract");
+        const charged = (await wallet()).used, invoked = providerCalls;
+        await call("POST", "/v1/analysis", request);
+        assert.equal((await wallet()).used, charged); assert.equal(providerCalls, invoked);
       } finally { expectedModel = "gpt-6.1-sol"; providerResult = plan; }
     });
     await t.test("refunds are cumulative and idempotent, and disputes freeze spending", async () => {

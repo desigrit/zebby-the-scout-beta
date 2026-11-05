@@ -7,6 +7,7 @@ import { chromium } from "playwright-core";
 import { LOCAL_MODELS } from "../desktop/local-model-catalog.ts";
 import { importanceForTerms } from "../desktop/plan-importance.ts";
 import { parseLocations } from "../lib/locations.ts";
+import { checkBoardsRenderer } from "./qa-boards-renderer.mjs";
 
 // Checks the compiled renderer with synthetic data in an invisible browser.
 // It does not launch Electron, read settings, or open an application database.
@@ -42,7 +43,7 @@ let plan = { id: "plan-1", listingUrl: "https://example.org/jobs/pm", company: "
   matchStrength: 84, matchNotes: "", matchAnalyzedAt: "2026-09-29T12:00:00Z", createdAt: "2026-09-29T12:00:00Z", updatedAt: "2026-09-29T12:00:00Z" };
 let plans = [plan];
 let lastCurrentOverview = plan.currentOverview;
-const state = { filePath: "example.sqlite", filename: "Applications.sqlite", dirty: false, startupError: "", hasApiKey: false,
+const state = { appName: "Zebby Core", filePath: "example.sqlite", filename: "Applications.sqlite", dirty: false, startupError: "", hasApiKey: false,
   hasAnthropicKey: false, apiKeyHint: "", anthropicKeyHint: "", thinkingLevels: {}, openaiModel: "gpt-6.1-sol", anthropicModel: "claude-sonnet-5-5",
   credits: { available: false, signedIn: false, email: "", wallet: null, stale: true, error: "", model: "gpt-6.1-sol",
     access: null, recoverySaved: false, pendingConnection: false },
@@ -73,7 +74,7 @@ const server = createServer(async (request, response) => {
   } catch { response.writeHead(404); response.end(); }
 });
 let browser;
-try {
+checks: try {
   await mkdir(output, { recursive: true });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
@@ -302,6 +303,8 @@ try {
       setPlatform: (platform) => { initialState.platform = platform; },
       setCompute: (compute) => { initialState.localCompute = compute; for (const listener of listeners) listener(snapshot()); } };
     window.desktop = { state: async () => initialState,
+      boardsState: async () => ({ filePath: "", filename: "", dirty: false, error: "", boards: [], progress: [] }),
+      onBoardsChanged: () => () => {},
       onDatabaseChanged: (listener) => { databaseListeners.add(listener); return () => databaseListeners.delete(listener); }, onNavigate: () => () => {},
       onAnalysisProgress: (listener) => { analysisListeners.add(listener); return () => analysisListeners.delete(listener); },
       cancelAnalysis: async (id) => { window.analysisQA.cancelled.push(id); return true; },
@@ -527,6 +530,8 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   const nav = page.getByRole("navigation", { name: "Workspace" });
   await page.getByRole("main", { name: "Plan", exact: true }).waitFor();
+  await checkBoardsRenderer(page, nav);
+  if (process.env.ZEBBY_QA_BOARDS_ONLY === "1") { assert.deepEqual(errors, []); console.log("Boards renderer checks passed."); break checks; }
   const originalDatabase = await page.evaluate(() => window.desktop.state());
   for (const platform of ["win32", "darwin"]) {
     await page.evaluate(platform => {
@@ -554,8 +559,8 @@ try {
   }, originalDatabase);
   await page.getByRole("main", { name: "Plan", exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector(".desktop-sidebar nav button")?.getBoundingClientRect().height > 0);
-  assert.equal(await page.title(), "Zebby");
-  assert.equal(await page.locator(".desktop-titlebar").innerText(), "Zebby");
+  assert.equal(await page.title(), "Zebby Core");
+  assert.equal(await page.locator(".desktop-titlebar").innerText(), "Zebby Core");
   assert.equal(await page.locator(".sidebar-brand").innerText(), "");
   const chrome = await page.locator(".desktop-titlebar").evaluate((element) => ({
     height: element.getBoundingClientRect().height,
@@ -584,7 +589,7 @@ try {
   });
   assert.deepEqual(sidebarPosition, { padding: "22px", brandBottom: "12px", zebraTop: 26, zebraLeft: 26, iconSize: 24, navHeight: 48 });
   await page.waitForFunction(() => [...document.querySelectorAll('.navigation-icon')].every(icon => icon.dataset.ready === "true"));
-  assert.equal(await nav.locator('.navigation-icon-player svg').count(), 3);
+  assert.equal(await nav.locator('.navigation-icon-player svg').count(), 4);
   const animatedPlan = nav.locator('[data-kind="plan"]');
   // Compare painted geometry with subpixel tolerance rather than serialized
   // SVG bookkeeping, which need not be identical after an animation.
@@ -1127,7 +1132,7 @@ try {
   await page.getByRole("button", { name: "Open database", exact: true }).click();
   assert.deepEqual(await page.evaluate(() => window.modelQA.databaseRequests), ["create", "open"]);
   assert.equal(await page.getByRole("link", { name: "Report an issue", exact: true }).getAttribute("href"),
-    "https://github.com/desigrit/zebby-the-scout/issues/new");
+    "https://github.com/desigrit/zebby-the-scout-beta/issues/new");
   assert.equal(await page.getByRole("link", { name: "Report an issue", exact: true }).getAttribute("target"), "_blank");
   await page.evaluate(() => { window.modelQA.failLogOpen = true; });
   await page.getByRole("button", { name: "Open logs folder", exact: true }).click();

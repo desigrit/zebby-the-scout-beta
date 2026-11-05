@@ -2,7 +2,8 @@ import { trustedProxyHops } from "./client-address.ts";
 import { isIP } from "node:net";
 
 export type ServiceConfig = { supabaseUrl: string; supabaseKey: string; publicUrl: string; stripeKey: string;
-  stripeWebhookSecret: string; openaiKey: string; anthropicKey: string; live: boolean; port: number; trustedProxyHops?: number; bindAddress?: string };
+  stripeWebhookSecret: string; openaiKey: string; anthropicKey: string; live: boolean; port: number; trustedProxyHops?: number; bindAddress?: string;
+  boardsWalletIds?: string[] };
 export function serviceConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
   function required(key: string) { const value = env[key]?.trim(); if (!value) throw new Error(`Set ${key} before starting the credits service.`); return value; }
   function https(value: string) { const url = new URL(value); if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw new Error("Service URLs must use HTTPS."); return url.origin; }
@@ -14,5 +15,6 @@ export function serviceConfig(env: NodeJS.ProcessEnv = process.env): ServiceConf
   return { supabaseUrl: https(required("SUPABASE_URL")), supabaseKey: required("SUPABASE_SERVICE_ROLE_KEY"),
     publicUrl: https(required("ZEBBY_PUBLIC_SERVICE_URL")), stripeKey, stripeWebhookSecret: required("STRIPE_WEBHOOK_SECRET"),
     openaiKey: env.OPENAI_API_KEY || "", anthropicKey: env.ANTHROPIC_API_KEY || "", live, port: Number(env.PORT || 8080),
-    trustedProxyHops: trustedProxyHops(env.ZEBBY_TRUST_PROXY_HOPS), bindAddress };
+    trustedProxyHops: trustedProxyHops(env.ZEBBY_TRUST_PROXY_HOPS), bindAddress,
+    boardsWalletIds: (env.ZEBBY_BOARDS_WALLET_IDS || "").split(",").map(value => value.trim()).filter(Boolean) };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import lottie, { type AnimationItem } from "lottie-web/build/player/lottie_light";
-import { BriefcaseBusiness, Settings2 } from "lucide-react";
+import { BriefcaseBusiness, PanelsTopLeft, Settings2 } from "lucide-react";
 import { navigationAnimations, type NavigationKind } from "./navigation-animations";
 
 function SmartSearchIcon({ className, size }: { className?: string; size: number }) {
@@ -10,7 +10,7 @@ function SmartSearchIcon({ className, size }: { className?: string; size: number
     <path strokeWidth={1.5} d="m18.5 1.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8Z M21.5 9.6v2.8 M20.1 11h2.8" />
   </svg>;
 }
-const icons = { plan: SmartSearchIcon, applications: BriefcaseBusiness, settings: Settings2 };
+const icons = { plan: SmartSearchIcon, applications: BriefcaseBusiness, boards: PanelsTopLeft, settings: Settings2 };
 export default function NavigationButton({ kind, label, selected, collapsed, onActivate, disabled = false }: {
   kind: NavigationKind; label: string; selected: boolean; collapsed: boolean; onActivate: () => boolean;
   disabled?: boolean;
@@ -48,6 +48,6 @@ export default function NavigationButton({ kind, label, selected, collapsed, onA
     aria-label={label} title={collapsed ? label : undefined} aria-current={selected ? "page" : undefined}>
     <span className="navigation-icon" data-kind={kind} ref={host} aria-hidden="true">
       <Icon className="navigation-icon-fallback" size={24} /><span className="navigation-icon-player" ref={player} />
-    </span><span className="nav-label">{label}</span>
+    </span><span className="nav-label">{label}{kind === "boards" && <span className="nav-private-tag">Private</span>}</span>
   </button>;
 }

@@ -1,6 +1,6 @@
 {
-  "name": "pm-application-tracker",
-  "version": "2.6.2",
+  "name": "zebby-the-scout-beta",
+  "version": "2.6.3-beta.1",
   "private": true,
   "main": "desktop-dist/main.cjs",
   "engines": {
@@ -11,7 +11,7 @@
     "build": "npm run desktop:build",
     "start": "electron .",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --test tests/job-details.test.mjs tests/job-text.test.mjs tests/public-address.test.mjs tests/desktop-store.test.mjs tests/cloud-database-safety.test.mjs tests/startup-database.test.mjs tests/local-analysis.test.mjs tests/application-activity.test.mjs tests/local-models.test.mjs tests/local-compute.test.mjs tests/window-shell.test.mjs tests/diagnostic-log.test.mjs tests/release-updates.test.mjs tests/analysis-cancellation.test.mjs tests/paid-analysis.test.mjs tests/credit-budgets.test.mjs tests/guest-wallets.test.mjs tests/credits-service-ready.test.mjs tests/wallet-usage.test.mjs tests/build-artifact-retention.test.mjs tests/local-model-response.test.mjs tests/thinking.test.mjs tests/ollama-progress.test.mjs tests/background-analysis.test.mjs tests/distribution.test.mjs tests/msix-package.test.mjs tests/tailored-resume.test.mjs",
+    "test": "node --experimental-strip-types --test tests/job-details.test.mjs tests/job-text.test.mjs tests/public-address.test.mjs tests/desktop-store.test.mjs tests/cloud-database-safety.test.mjs tests/startup-database.test.mjs tests/local-analysis.test.mjs tests/application-activity.test.mjs tests/local-models.test.mjs tests/local-compute.test.mjs tests/window-shell.test.mjs tests/diagnostic-log.test.mjs tests/release-updates.test.mjs tests/analysis-cancellation.test.mjs tests/paid-analysis.test.mjs tests/credit-budgets.test.mjs tests/guest-wallets.test.mjs tests/credits-service-ready.test.mjs tests/wallet-usage.test.mjs tests/build-artifact-retention.test.mjs tests/local-model-response.test.mjs tests/thinking.test.mjs tests/ollama-progress.test.mjs tests/background-analysis.test.mjs tests/distribution.test.mjs tests/msix-package.test.mjs tests/tailored-resume.test.mjs tests/boards.test.mjs",
     "test:job-details": "node --experimental-strip-types --test tests/job-details.test.mjs tests/job-text.test.mjs",
     "test:credits": "node --experimental-strip-types --test tests/paid-analysis.test.mjs tests/credit-budgets.test.mjs tests/guest-wallets.test.mjs tests/credits-service-ready.test.mjs tests/wallet-usage.test.mjs",
     "test:renderer": "node --experimental-strip-types scripts/qa-renderer.mjs",
@@ -25,7 +25,8 @@
     "desktop:package:win:arm64": "npm run desktop:build && node scripts/download-electron-arm64.mjs && electron-builder --win nsis --arm64 --publish never -c electron-builder.arm64.cjs",
     "desktop:package:mac:arm64": "npm run desktop:build && electron-builder --mac dmg --arm64 --publish never",
     "desktop:package:store": "node scripts/build-msix.mjs",
-    "test:resume-files": "node scripts/qa-tailored-files.mjs"
+    "test:resume-files": "node scripts/qa-tailored-files.mjs",
+    "test:boards": "node --experimental-strip-types --test tests/boards.test.mjs"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -70,9 +71,9 @@
   },
   "type": "module",
   "build": {
-    "appId": "com.desigrit.pmapplications",
-    "productName": "Zebby",
-    "artifactName": "Zebby-${version}-${os}-${arch}.${ext}",
+    "appId": "com.desigrit.zebbycore",
+    "productName": "Zebby Core",
+    "artifactName": "Zebby-Core-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "desktop-packages"
     },

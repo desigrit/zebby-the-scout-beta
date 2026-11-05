@@ -45,12 +45,12 @@ export function updateFromRelease(payload: unknown, current: string, platform: s
 }
 
 export class ReleaseUpdates {
-  private readonly options: { version: string; platform: string; arch: string; channel?: "direct" | "store";
+  private readonly options: { version: string; platform: string; arch: string; channel?: "direct" | "store"; enabled?: boolean;
     fetch?: typeof fetch; onChange?: (value: UpdateState) => void; onError?: (error: unknown) => void; now?: () => number };
   private value: UpdateState;
   private pending: Promise<UpdateState> | null = null;
   private lastAttempt: number | null = null;
-  constructor(options: { version: string; platform: string; arch: string; channel?: "direct" | "store";
+  constructor(options: { version: string; platform: string; arch: string; channel?: "direct" | "store"; enabled?: boolean;
     fetch?: typeof fetch; onChange?: (value: UpdateState) => void; onError?: (error: unknown) => void; now?: () => number }) {
     this.options = options;
     this.value = { currentVersion: options.version, checking: false, checkedAt: "", error: "", available: null,
@@ -62,6 +62,7 @@ export class ReleaseUpdates {
     this.value = { ...this.value, ...value }; this.options.onChange?.(this.state);
   }
   check(force = false): Promise<UpdateState> {
+    if (this.options.enabled === false) return Promise.resolve(this.state);
     if (this.options.channel === "store") return Promise.resolve(this.state);
     if (this.pending) return this.pending;
     if (!["idle", "error"].includes(this.value.download.phase)) return Promise.resolve(this.state);

@@ -1,0 +1,55 @@
+name: Core beta checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      package_windows:
+        description: Build a Windows x64 installer
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npm run lint -- --quiet
+      - run: npm run build
+      - run: node node_modules/playwright-core/cli.js install chromium
+      - run: npm run test:renderer
+        env:
+          ZEBBY_QA_CHECKS_ONLY: '1'
+          ZEBBY_CAPTURE_BOARDS: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-boards-review
+          path: .impeccable/review/*.png
+          include-hidden-files: true
+          retention-days: 1
+      - run: npm run credits:build
+      - name: Package Core for Windows
+        if: github.event_name == 'workflow_dispatch' && inputs.package_windows
+        run: npm run desktop:package:win:x64
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.package_windows
+        with:
+          name: zebby-core-windows-x64
+          path: desktop-packages/Zebby-Core-*.exe
+          retention-days: 1
+          if-no-files-found: error

@@ -27,11 +27,7 @@
 
 !macro customUnInstall
   ${ifNot} ${isUpdated}
-    !insertmacro deleteTrackerModels "$LOCALAPPDATA\Zebby\Models"
-    !insertmacro deleteTrackerModels "$APPDATA\Zebby\Models"
-    !insertmacro deleteTrackerModels "$LOCALAPPDATA\PM Application Tracker\Models"
-    !insertmacro deleteTrackerModels "$LOCALAPPDATA\pm-application-tracker\Models"
-    !insertmacro deleteTrackerModels "$APPDATA\pm-application-tracker\Models"
-    !insertmacro deleteTrackerModels "$APPDATA\PM Application Tracker\Models"
+    !insertmacro deleteTrackerModels "$LOCALAPPDATA\Zebby Core\Models"
+    !insertmacro deleteTrackerModels "$APPDATA\Zebby Core\Models"
   ${endif}
 !macroend

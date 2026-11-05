@@ -35,7 +35,7 @@ export async function runSelectedAnalysis(selected: AnalysisSelection, providers
   }
   const model = getLocalModel(selected.builtInModelId);
   await providers.ready(model.id);
-  if (model.basic && name !== "tailored_resume") return analyzeBasicLocal(input as Record<string, unknown>, name === "resume_plan",
+  if (model.basic && (name === "resume_plan" || name === "resume_match")) return analyzeBasicLocal(input as Record<string, unknown>, name === "resume_plan",
     (...args) => providers.local(model.id, ...args));
   return providers.local(model.id, instructions, input, schema);
 }

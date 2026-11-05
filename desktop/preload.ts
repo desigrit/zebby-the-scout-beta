@@ -1,6 +1,21 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("desktop", {
+  boardsState: () => ipcRenderer.invoke("boards:state"),
+  chooseBoardsDatabase: (kind: string) => ipcRenderer.invoke("boards:choose-database", kind),
+  retryBoardsSave: () => ipcRenderer.invoke("boards:retry-save"),
+  saveBoardsRecovery: () => ipcRenderer.invoke("boards:save-recovery"),
+  addBoards: (inputs: unknown) => ipcRenderer.invoke("boards:add", inputs),
+  updateBoard: (id: string, input: unknown) => ipcRenderer.invoke("boards:update", id, input),
+  removeBoard: (id: string) => ipcRenderer.invoke("boards:remove", id),
+  checkBoards: (ids?: string[]) => ipcRenderer.invoke("boards:check", ids),
+  cancelBoardCheck: (id: string) => ipcRenderer.invoke("boards:cancel", id),
+  markBoardReviewed: (id: string, through: number) => ipcRenderer.invoke("boards:reviewed", id, through),
+  onBoardsChanged: (callback: (value: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, value: unknown) => callback(value);
+    ipcRenderer.on("boards:changed", listener);
+    return () => ipcRenderer.removeListener("boards:changed", listener);
+  },
   cancelAnalysis: (id: string) => ipcRenderer.invoke("desktop:cancel-analysis", id),
   onAnalysisProgress: (callback: (value: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, value: unknown) => callback(value);

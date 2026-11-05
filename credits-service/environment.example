@@ -12,6 +12,8 @@ PORT=8080
 ZEBBY_BIND_ADDRESS=0.0.0.0
 # Optional public Git commit identifier for /health.
 ZEBBY_SERVICE_COMMIT=
+# Optional owner wallet IDs allowed to use Boards in Core. Empty disables Boards.
+ZEBBY_BOARDS_WALLET_IDS=
 # 0 ignores forwarded headers. Set 1-4 only for a verified, fixed proxy chain.
 ZEBBY_TRUST_PROXY_HOPS=0
 # Leave false during sandbox checks. Live credentials must match live mode.
