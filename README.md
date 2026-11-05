@@ -1,10 +1,10 @@
 <img src="public/brand-icon.png" width="88" alt="Zebby, a zebra wearing sunglasses" />
 
-# Zebby Core
+# Zebby - Beta
 
 Plan roles, track applications, and check your saved job boards for new listings.
 
-This public beta extends [Zebby](https://github.com/desigrit/zebby-the-scout) with a personal **Boards · Private** tab. It installs as **Zebby Core**, with its own settings, credentials, model downloads, and application identity.
+This public beta extends [Zebby](https://github.com/desigrit/zebby-the-scout) with a personal **Boards · Private** tab. It installs as **Zebby - Beta**, with its own settings, credentials, model downloads, and application identity.
 
 ## Boards
 
@@ -20,11 +20,11 @@ The reader includes pagination and coverage checks for Slack, Uber, and Meta, pl
 
 ## Your databases
 
-Applications and Boards use separate SQLite files. The Applications schema stays compatible with public Zebby. Open your existing Applications file in Settings to use it with Core.
+Applications and Boards use separate SQLite files. The Applications schema stays compatible with public Zebby. Open your existing Applications file in Settings to use it with the beta.
 
 Boards works on a local copy and publishes complete changes to your selected file. If a save fails, use **Retry save** or **Save recovery copy**. Quit the app and let OneDrive finish syncing before opening the same files on another computer.
 
-API keys, wallet credentials, model downloads, and local caches stay in Core's own profile. They are not included in the Boards database or this repository. Updates are installed manually from the beta repository.
+The beta stores API keys, wallet credentials, model downloads, and local caches in its own profile. Install updates manually from the beta repository.
 
 ## AI methods
 
@@ -50,6 +50,6 @@ npm run build
 npm run test:renderer
 ```
 
-Build a Windows x64 installer with `npm run desktop:package:win:x64`. The first package build downloads the bundled local inference runtime. The **Core beta checks** workflow runs tests on pushes and can build an installer when started manually.
+Build a Windows x64 installer with `npm run desktop:package:win:x64`. The first package build downloads the bundled local inference runtime. The **Zebby Beta checks** workflow runs tests on pushes and can build an installer when started manually.
 
 [Boards architecture and checks](docs/boards.md) · [Public Zebby](https://github.com/desigrit/zebby-the-scout) · [Report a beta issue](https://github.com/desigrit/zebby-the-scout-beta/issues)

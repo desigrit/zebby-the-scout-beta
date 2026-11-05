@@ -48,6 +48,6 @@ Implementation references: `desktop/renderer/BoardsView.tsx`, the Boards rules a
 
 - The context resolver lists the existing surface briefs with null primary and related targets, including this brief's prose Target. The supplied source path and this file were matched directly for this handoff.
 - `DESIGN.md` and the sidecar still describe their extraction as version 1.6.0; the sidecar generation date remains October 2, 2026. Later approved design notes already appear in `DESIGN.md`.
-- Shared product/design context describes the Zebby title and the original Plan, Applications, and Settings navigation. This branch's requested Zebby Core identity and Boards destination are recorded here without rewriting those shared documents.
+- The beta uses the Zebby - Beta title and adds Boards between Applications and Settings.
 
 These existing discrepancies were reported and left unchanged. The observed Boards implementation is consistent with Ember, and this handoff updates only this surface brief.

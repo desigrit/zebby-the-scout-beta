@@ -1,4 +1,4 @@
-name: Core beta checks
+name: Zebby Beta checks
 
 on:
   push:
@@ -43,13 +43,13 @@ jobs:
           include-hidden-files: true
           retention-days: 1
       - run: npm run credits:build
-      - name: Package Core for Windows
+      - name: Package Zebby - Beta for Windows
         if: github.event_name == 'workflow_dispatch' && inputs.package_windows
         run: npm run desktop:package:win:x64
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch' && inputs.package_windows
         with:
-          name: zebby-core-windows-x64
-          path: desktop-packages/Zebby-Core-*.exe
+          name: zebby-beta-windows-x64
+          path: desktop-packages/Zebby-Beta-*.exe
           retention-days: 1
           if-no-files-found: error

@@ -43,7 +43,7 @@ let plan = { id: "plan-1", listingUrl: "https://example.org/jobs/pm", company: "
   matchStrength: 84, matchNotes: "", matchAnalyzedAt: "2026-09-29T12:00:00Z", createdAt: "2026-09-29T12:00:00Z", updatedAt: "2026-09-29T12:00:00Z" };
 let plans = [plan];
 let lastCurrentOverview = plan.currentOverview;
-const state = { appName: "Zebby Core", filePath: "example.sqlite", filename: "Applications.sqlite", dirty: false, startupError: "", hasApiKey: false,
+const state = { appName: "Zebby - Beta", filePath: "example.sqlite", filename: "Applications.sqlite", dirty: false, startupError: "", hasApiKey: false,
   hasAnthropicKey: false, apiKeyHint: "", anthropicKeyHint: "", thinkingLevels: {}, openaiModel: "gpt-6.1-sol", anthropicModel: "claude-sonnet-5-5",
   credits: { available: false, signedIn: false, email: "", wallet: null, stale: true, error: "", model: "gpt-6.1-sol",
     access: null, recoverySaved: false, pendingConnection: false },
@@ -559,8 +559,8 @@ checks: try {
   }, originalDatabase);
   await page.getByRole("main", { name: "Plan", exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector(".desktop-sidebar nav button")?.getBoundingClientRect().height > 0);
-  assert.equal(await page.title(), "Zebby Core");
-  assert.equal(await page.locator(".desktop-titlebar").innerText(), "Zebby Core");
+  assert.equal(await page.title(), "Zebby - Beta");
+  assert.equal(await page.locator(".desktop-titlebar").innerText(), "Zebby - Beta");
   assert.equal(await page.locator(".sidebar-brand").innerText(), "");
   const chrome = await page.locator(".desktop-titlebar").evaluate((element) => ({
     height: element.getBoundingClientRect().height,

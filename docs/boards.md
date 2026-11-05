@@ -1,6 +1,6 @@
 # Boards implementation
 
-Boards monitors the result set behind a saved public career-page link. It reports **new listings found**, which means identities first observed by Core, rather than asserting a publication date supplied by the employer.
+Boards monitors the result set behind a saved public career-page link. It reports **new listings found** when the beta first observes a listing after the baseline.
 
 ## Collection and comparison
 
@@ -37,11 +37,11 @@ Dynamic boards can still change while being read. A changed visible total or pag
 
 The first complete check acknowledges all current identities. Subsequent checks add unseen identities. Pending discoveries accumulate even if a listing later disappears. **Mark as reviewed** advances only through the check displayed when clicked, preserving any newer discoveries. A returning ID is not new. A company rename preserves history; a changed search link creates a new revision and baseline.
 
-Core copies the selected database into its local profile, checks for external changes before writing, and uses SQLite backup to update the selected file without replacing its file identity. A recovery marker is written before local commit. Restart preserves pending changes. Conflicts require an explicit recovery copy; Core does not merge simultaneous edits from multiple computers.
+The beta copies the selected database into its local profile, checks for external changes before writing, and uses SQLite backup to update the selected file while preserving its file identity. The beta writes a recovery marker before local commit. Restart preserves pending changes. Simultaneous edits from multiple computers require an explicit recovery copy.
 
 `desktop/boards-service.ts` serializes checks, deduplicates repeated clicks, supports cancellation before the save phase, and prevents results from being written to a changed board or database. The UI receives progress through IPC. Result caches contain validated extraction IDs, keyed by input, instructions, model, provider, thinking level and local endpoint. A paid extraction is cached before its receipt is acknowledged, so an interrupted scan can reuse it.
 
-The main Applications schema remains version 10. No Boards migration touches that database. Core's profile and model folder are separate from public Zebby, and Core does not fetch public Zebby auto-updates.
+Applications uses schema version 10. Boards writes to a separate database. Zebby - Beta has its own profile, model folder, and manual update process.
 
 ## Credits service rollout
 
@@ -62,4 +62,4 @@ The service enforces the allowlist for quotes, analysis execution, and recovered
 
 The opt-in `node scripts/qa-board-reader.mjs` checks live Slack, Uber and Meta loading and pagination without paid model calls. To test the actual Ollama extraction path, set `ZEBBY_QA_BOARD_MODEL` to an installed model and pass the board URL as an argument. These checks use an isolated test profile and do not open personal databases.
 
-`node scripts/qa-boards-native.mjs` exercises the actual Electron UI, IPC, selected Ollama model, first baseline, and persisted history after restart. Set `ZEBBY_QA_EXECUTABLE` to the unpacked Core executable to check a packaged build.
+`node scripts/qa-boards-native.mjs` exercises the actual Electron UI, IPC, selected Ollama model, first baseline, and persisted history after restart. Set `ZEBBY_QA_EXECUTABLE` to the unpacked beta executable to check a packaged build.

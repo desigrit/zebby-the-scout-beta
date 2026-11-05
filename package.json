@@ -1,6 +1,6 @@
 {
   "name": "zebby-the-scout-beta",
-  "version": "2.6.3-beta.1",
+  "version": "2.6.3-beta.2",
   "private": true,
   "main": "desktop-dist/main.cjs",
   "engines": {
@@ -72,8 +72,8 @@
   "type": "module",
   "build": {
     "appId": "com.desigrit.zebbycore",
-    "productName": "Zebby Core",
-    "artifactName": "Zebby-Core-${version}-${os}-${arch}.${ext}",
+    "productName": "Zebby - Beta",
+    "artifactName": "Zebby-Beta-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "desktop-packages"
     },
@@ -97,6 +97,7 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
+      "uninstallDisplayName": "${productName}",
       "include": "build/model-cleanup.nsh"
     },
     "mac": {

@@ -17,7 +17,7 @@ await build({ stdin: { contents: `
   export * from './shared/boards';`, resolveDir: process.cwd() },
   outfile: bundle, bundle: true, platform: "node", format: "esm", target: "node22" });
 const { BoardsStore, BoardsService, scanBoard, boardJobIdentity, boardSearchKey, boardUrl,
-  configureCoreProfile, validatedBoardExtraction } = await import(pathToFileURL(bundle).href);
+  configureBetaProfile, validatedBoardExtraction } = await import(pathToFileURL(bundle).href);
 after(async () => { assert.ok(root.startsWith(path.resolve(tmpdir()) + path.sep)); await rm(root, { recursive: true, force: true }); });
 
 async function fixture(work) {
@@ -198,11 +198,13 @@ test("coordinator deduplicates concurrent checks and reuses validated extraction
   await service.stop();
 }));
 
-test("Core has its own profile and does not migrate the public profile", async () => {
+test("the beta display name preserves its existing profile folder", async () => {
   const appData = path.join(root, "profiles"); await mkdir(appData);
   const paths = { appData, userData: path.join(appData, "Zebby") }, names = [];
-  const profile = configureCoreProfile({ getPath: name => paths[name], setPath: (name, value) => paths[name] = value, setName: name => names.push(name) });
-  assert.equal(profile.folder, path.join(appData, "Zebby Core")); assert.deepEqual(profile.legacyFolders, []); assert.equal(names.at(-1), "Zebby Core");
+  const profile = configureBetaProfile({ getPath: name => paths[name], setPath: (name, value) => paths[name] = value, setName: name => names.push(name) });
+  assert.equal(profile.folder, path.join(appData, "Zebby Core"));
+  assert.deepEqual(profile.legacyFolders, []);
+  assert.equal(names.at(-1), "Zebby - Beta");
 });
 
 test("a failed receipt acknowledgement resumes from the saved extraction without another charge", () => fixture(async ({ store, profile }) => {

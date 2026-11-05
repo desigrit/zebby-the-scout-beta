@@ -17,7 +17,7 @@ import { acceptModelTerms, modelTermsAccepted, type AcceptedModelTerms } from ".
 import { parsePlanRecommendations } from "./plan-importance";
 import { freemem, totalmem, hostname } from "node:os";
 import { migrateApplicationProfile, migrateModelFolder } from "./app-identity";
-import { CORE_APP_NAME as APP_NAME, configureCoreProfile as configureApplicationProfile } from "./beta-identity";
+import { BETA_APP_NAME as APP_NAME, configureBetaProfile as configureApplicationProfile } from "./beta-identity";
 import { ReleaseUpdates } from "./release-updates";
 import { SelfUpdater } from "./self-update";
 import { nativeWindowShell, windowColors, type Appearance } from "./window-appearance";
@@ -90,7 +90,7 @@ function settingsPath() { return path.join(app.getPath("userData"), "settings.js
 function logsPath() { return path.join(app.getPath("userData"), "Logs"); }
 
 function directUpdater(): SelfUpdater {
-  throw new Error("Install a Zebby Core beta build to update this app.");
+  throw new Error(`Install a new ${APP_NAME} build to update this app.`);
 }
 
 function checkDatabaseLocation(filePath: string) {

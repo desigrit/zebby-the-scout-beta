@@ -615,7 +615,7 @@ function SettingsView({ state, onState, onUpdate, onCheckUpdates, updateWorking 
       </div>
     </section>
     <section className="settings-section" aria-labelledby="updates-settings">
-      <div className="settings-section-heading"><h2 id="updates-settings">Updates</h2><p>Zebby {state.updates.currentVersion}</p></div>
+      <div className="settings-section-heading"><h2 id="updates-settings">Updates</h2><p>{state.appName || document.title} {state.updates.currentVersion}</p></div>
       <div className="settings-content">
         {state.manualUpdates ? <a className="settings-link" href="https://github.com/desigrit/zebby-the-scout-beta" target="_blank" rel="noopener noreferrer">Open beta repository <ArrowUpRight size={15} aria-hidden="true" /></a> : state.distributionChannel === "store" ? <>
           <div className="settings-actions"><SettingsAction icon={ArrowUpRight} onClick={() => void checkUpdates()}>Open Microsoft Store</SettingsAction></div>
@@ -772,7 +772,7 @@ export default function App() {
   return <SavedFeedbackProvider><AnalysisFlowProvider state={state} onState={setState} onOpenSettings={openAnalysisSettings}><BackgroundAnalysisProvider key={databaseVersion}><div className={`desktop-shell ${state.platform === "darwin" ? "platform-mac" : "platform-windows"}${state.sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
     <header className="desktop-titlebar" aria-label="Window title bar">
       <div className="titlebar-sidebar" aria-hidden="true" />
-      <div className="titlebar-caption">{state.appName || "Zebby"}</div>
+      <div className="titlebar-caption">{state.appName || document.title}</div>
     </header>
     <aside className="desktop-sidebar" inert={updateWorking && state.updates.download.phase === "ready" || state.updates.download.phase === "installing"}>
       <div className="sidebar-brand"><button className="sidebar-toggle" type="button" onClick={() => void toggleSidebar()}
